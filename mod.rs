@@ -19,8 +19,6 @@ fn max<T: PartialOrd>(a: T, b: T) -> T {
         b
     }
 }
-
-fn min<T: PartialOrd>(a: T, b: T) -> T {
     if a <= b {
         a
     } else {
@@ -32,8 +30,8 @@ fn find_best_move(
     board: Board,
     depth: i8,
     mut alpha: i16,
-    mut beta: i16,
-    maximize: bool,
+    beta: i16,
+    color_i: i8,
     stats_data: &mut Statistics,
 ) -> (i16, ChessMove, [ChessMove; DEPTH_LIM as usize]) {
     // Copy alpha beta from parent
@@ -45,134 +43,74 @@ fn find_best_move(
         let mut _blank_move: ChessMove;
         let proposed_line: [ChessMove; DEPTH_LIM as usize] =
             [Default::default(); DEPTH_LIM as usize];
-        return (evaluate_board(board), Default::default(), proposed_line);
+        return ((color_i as i16) * evaluate_board(board), Default::default(), proposed_line);
     }
 
-    if maximize
-    // Own player, try to maximize score
-    {
-        if board.side_to_move() != Color::White {
-            panic!("Maximizing with black to move!")
-        }
+    let mut max_val = i16::min_value() + 1;
+    let mut max_move = Default::default();
+    let mut max_line: [ChessMove; DEPTH_LIM as usize] = [Default::default(); DEPTH_LIM as usize];
 
-        let mut max_val = -INFINITY as i16;
-        let mut max_move = Default::default();
-        let mut max_line: [ChessMove; DEPTH_LIM as usize] =
-            [Default::default(); DEPTH_LIM as usize];
+    // Generate moves
+    let mut child_moves = MoveGen::new_legal(&board);
+    // Get length of moves
+    let num_moves = child_moves.len();
+    let pawn_captures = board.pieces(Piece::Pawn) & board.color_combined(!board.side_to_move()); // Usually good to capture a pawn
+    let captures = board.color_combined(!board.side_to_move());
+    let targets = [pawn_captures, *captures, !EMPTY];
 
-        // Generate moves
-        let mut child_moves = MoveGen::new_legal(&board);
-        // Get length of moves
-        let num_moves = child_moves.len();
-        let targets = board.color_combined(!board.side_to_move());
-        let targets = [*targets, !EMPTY];
+    let mut continue_search: bool = true;
 
-        let mut continue_search: bool = true;
+    if SEARCH_INFO {
+        stats_data.all_nodes += num_moves as i32
+    }
 
-        if SEARCH_INFO {stats_data.all_nodes += num_moves as i32}
+    if color_i == 1 && board.side_to_move() == Color::Black {
+        println!("PROBLEM!")
+    }
 
-        for trg in targets {
-            child_moves.set_iterator_mask(trg); // Set target mask
+    for trg in targets {
+        child_moves.set_iterator_mask(trg); // Set target mask
 
-            if continue_search {
-                for mve in &mut child_moves {
-                    let (mve_score, _best_move, proposed_line) = find_best_move(
-                        board.make_move_new(mve),
-                        depth + 1,
-                        alpha,
-                        beta,
-                        false,
-                        stats_data,
-                    );
+        if continue_search {
+            for mve in &mut child_moves {
+                let (negative_value, _best_move, proposed_line) = find_best_move(
+                    board.make_move_new(mve),
+                    depth + 1,
+                    -beta,
+                    -alpha,
+                    -color_i,
+                    stats_data,
+                );
 
-                    // Update stats
-                    if SEARCH_INFO {
-                        stats_data.searched_nodes += 1
-                    }
+                let value = -negative_value;
 
-                    if mve_score > max_val {
-                        max_val = mve_score;
-                        max_move = mve;
-                        max_line = proposed_line;
-                        max_line[depth as usize] = max_move;
-                    }
-                    
-                    if DEBUG_MODE {
-                        println!("Move under consideration {}, number of possible moves {}, resulting score {}, depth {}, maximizing", mve, num_moves, mve_score, depth)
-                    }
-                    if beta <= alpha {
-                        continue_search = false;
-                        break;
-                    }
+                // Update stats
+                if SEARCH_INFO {
+                    stats_data.searched_nodes += 1
+                }
 
-                    alpha = max(alpha, mve_score);
+                if value > max_val {
+                    max_val = value;
+                    max_move = mve;
+                    max_line = proposed_line;
+                    max_line[depth as usize] = max_move;
+                }
+
+                if DEBUG_MODE {
+                    println!("Move under consideration {}, number of possible moves {}, resulting score {}, depth {}, maximizing", mve, num_moves, -value, depth)
+                }
+                
+                alpha = max(alpha, value);
+
+                if alpha >= beta {
+                    continue_search = false;
+                    break;
                 }
             }
         }
-
-        return (max_val, max_move, max_line);
-    } else {
-        if board.side_to_move() != Color::Black {
-            panic!("Minimizing with white to move!")
-        }
-
-        // Opponent, try to minimize score
-        let mut min_val = INFINITY as i16;
-        let mut min_move = Default::default();
-        let mut min_line: [ChessMove; DEPTH_LIM as usize] =
-            [Default::default(); DEPTH_LIM as usize];
-
-        // Generate moves
-        let mut child_moves = MoveGen::new_legal(&board);
-        // Get length of moves
-        let num_moves = child_moves.len();
-        let targets = board.color_combined(!board.side_to_move());
-        let targets = [*targets, !EMPTY];
-
-        let mut continue_search: bool = true;
-
-        if SEARCH_INFO {stats_data.all_nodes += num_moves as i32}
-
-        for trg in targets {
-            child_moves.set_iterator_mask(trg); // Set target mask
-
-            if continue_search {
-                for mve in &mut child_moves {
-                    let (mve_score, _best_move, proposed_line) = find_best_move(
-                        board.make_move_new(mve),
-                        depth + 1,
-                        alpha,
-                        beta,
-                        true,
-                        stats_data,
-                    );
-                    // Update stats
-                    if SEARCH_INFO {
-                        stats_data.searched_nodes += 1
-                    }
-
-                    if mve_score < min_val {
-                        min_val = mve_score;
-                        min_move = mve;
-                        min_line = proposed_line;
-                        min_line[depth as usize] = min_move;
-                    }
-                    
-                    if DEBUG_MODE {
-                        println!("Move under consideration {}, number of possible moves {}, resulting score {}, depth {}, minimizing", mve, num_moves, mve_score, depth)
-                    }
-                    if beta <= alpha {
-                        continue_search = false;
-                        break;
-                    }
-
-                    beta = min(beta, mve_score);
-                }
-            }
-        }
-
-        return (min_val, min_move, min_line);
     }
+
+    return (max_val, max_move, max_line);
 }
 
 fn evaluate_board(board: Board) -> i16 {
@@ -184,8 +122,8 @@ fn evaluate_board(board: Board) -> i16 {
             // Since checkmate ends the game, we only need to asses it once
             // Since we assess after a move, it is safe to check at the child node level
             match board.side_to_move() {
-                Color::White => return -INFINITY as i16,
-                Color::Black => return INFINITY as i16,
+                Color::White => return i16::min_value() + 1,
+                Color::Black => return i16::max_value() - 1,
             }
         }
         BoardStatus::Stalemate => {
@@ -203,9 +141,9 @@ fn evaluate_board(board: Board) -> i16 {
 
             let mut score: i16 = 0;
 
-            for p in board.pieces(Piece::Pawn) & board.color_combined(Color::Black){
-                p
-            }
+            // for p in board.pieces(Piece::Pawn) & board.color_combined(Color::Black) {
+            //     p
+            // }
 
             let black_pawns =
                 (board.pieces(Piece::Pawn) & board.color_combined(Color::Black)).popcnt() as i16;
@@ -252,15 +190,22 @@ fn evaluate_board(board: Board) -> i16 {
 pub(crate) fn enter_engine(board: Board) {
     println!("Balance of board {}", evaluate_board(board));
 
-    let maximize: bool = board.side_to_move() == Color::White;
+    let color_i: i8 = if board.side_to_move() == Color::White {1} else {-1};
+    // The color expressed as an integer, where white == 1 and black == -1
 
     let mut run_stats = Statistics {
         all_nodes: 0,
         searched_nodes: 0,
     };
 
-    let (best_score, best_mve, best_line) =
-        find_best_move(board, 0, -INFINITY as i16, INFINITY as i16, maximize, &mut run_stats);
+    let (best_score, best_mve, best_line) = find_best_move(
+        board,
+        0,
+        (i16::min_value() + 1),
+        (i16::max_value() - 1),
+        color_i,
+        &mut run_stats,
+    );
     println!(
         "Best move: {}, board score of best move: {}",
         best_mve, best_score
@@ -268,19 +213,24 @@ pub(crate) fn enter_engine(board: Board) {
 
     println!("Proposed line:");
     let mut i: i8 = 1;
-    let mut is_white = maximize;
+    let mut is_white = color_i == 1;
     for mve in best_line {
         if is_white {
             println!("White, Move {}: {}", i, mve);
         } else {
             println!("Black, Move {}: {}", i, mve);
         }
-        
+
         is_white = !is_white;
         i += 1;
     }
 
-    let percent_reduction: f32 = (1.0 - (run_stats.searched_nodes as f32)/(run_stats.all_nodes as f32)) * 100.0;
-    if SEARCH_INFO {println!("Search stats. \n All nodes in problem: {}\n Nodes visited {}, reduction {}%", run_stats.all_nodes, run_stats.searched_nodes, percent_reduction)}
-    
+    let percent_reduction: f32 =
+        (1.0 - (run_stats.searched_nodes as f32) / (run_stats.all_nodes as f32)) * 100.0;
+    if SEARCH_INFO {
+        println!(
+            "Search stats. \n All nodes in problem: {}\n Nodes visited {}, reduction {}%",
+            run_stats.all_nodes, run_stats.searched_nodes, percent_reduction
+        )
+    }
 }
