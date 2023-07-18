@@ -1,8 +1,14 @@
-use chess::{BitBoard, Board, BoardStatus, ChessMove, Color, MoveGen, Piece, EMPTY};
-use std::f32::INFINITY;
+#![allow(dead_code)]
+
+// use std::hash::Hash;
+use itertools::Itertools;
+use chess::{BitBoard, Board, BoardStatus, CacheTable, ChessMove, Color, MoveGen, Piece, EMPTY};
+
+
 mod data;
 // use std::thread;
-const DEPTH_LIM: i8 = 8;
+const DEPTH_LIM: i16 = 7;
+const TIME_LIM: i32 = 5000; // ms
 static DEBUG_MODE: bool = false;
 static SEARCH_INFO: bool = true;
 // static MULTI_THREAD: bool = true;
@@ -10,6 +16,13 @@ static SEARCH_INFO: bool = true;
 struct Statistics {
     all_nodes: i32,
     searched_nodes: i32,
+    caches_used: i32,
+}
+
+#[derive(Copy, Clone)]
+struct CacheSave {
+    score: i16,
+    depth: i8,
 }
 
 fn max<T: PartialOrd>(a: T, b: T) -> T {
@@ -19,20 +32,19 @@ fn max<T: PartialOrd>(a: T, b: T) -> T {
         b
     }
 }
-    if a <= b {
-        a
-    } else {
-        b
-    }
-}
+
+// fn order_moves(moves: &mut MoveGen){
+//     moves.sor
+// }
 
 fn find_best_move(
     board: Board,
-    depth: i8,
+    depth: i16,
     mut alpha: i16,
     beta: i16,
     color_i: i8,
     stats_data: &mut Statistics,
+    cache: &mut CacheTable<[i16; 2]>,
 ) -> (i16, ChessMove, [ChessMove; DEPTH_LIM as usize]) {
     // Copy alpha beta from parent
 
@@ -43,7 +55,11 @@ fn find_best_move(
         let mut _blank_move: ChessMove;
         let proposed_line: [ChessMove; DEPTH_LIM as usize] =
             [Default::default(); DEPTH_LIM as usize];
-        return ((color_i as i16) * evaluate_board(board), Default::default(), proposed_line);
+        return (
+            (color_i as i16) * evaluate_board(board),
+            Default::default(),
+            proposed_line,
+        );
     }
 
     let mut max_val = i16::min_value() + 1;
@@ -64,25 +80,50 @@ fn find_best_move(
         stats_data.all_nodes += num_moves as i32
     }
 
-    if color_i == 1 && board.side_to_move() == Color::Black {
-        println!("PROBLEM!")
-    }
-
     for trg in targets {
         child_moves.set_iterator_mask(trg); // Set target mask
 
         if continue_search {
             for mve in &mut child_moves {
-                let (negative_value, _best_move, proposed_line) = find_best_move(
-                    board.make_move_new(mve),
-                    depth + 1,
-                    -beta,
-                    -alpha,
-                    -color_i,
-                    stats_data,
-                );
+                let (negative_value, _best_move, proposed_line);
+                match cache.get(board.make_move_new(mve).get_hash()) {
+                    Some(value) => {
+                        if depth == value[1] {
+                            // We've found this move in the current search no need to assess
+                            negative_value = -value[0];
+                            _best_move = Default::default();
+                            proposed_line = [Default::default(); DEPTH_LIM as usize];
+                            stats_data.caches_used += 1;
+                        } else {
+                            // We saw this move at a previous depth, can reorder moves to make it better?
+                            (negative_value, _best_move, proposed_line) = find_best_move(
+                                board.make_move_new(mve),
+                                depth + 1,
+                                -beta,
+                                -alpha,
+                                -color_i,
+                                stats_data,
+                                cache,
+                            );
+
+                        }
+                    }
+                    None => {
+                        (negative_value, _best_move, proposed_line) = find_best_move(
+                            board.make_move_new(mve),
+                            depth + 1,
+                            -beta,
+                            -alpha,
+                            -color_i,
+                            stats_data,
+                            cache,
+                        );
+                    }
+                }
 
                 let value = -negative_value;
+
+                cache.add(board.make_move_new(mve).get_hash(), [value, depth]);
 
                 // Update stats
                 if SEARCH_INFO {
@@ -99,7 +140,7 @@ fn find_best_move(
                 if DEBUG_MODE {
                     println!("Move under consideration {}, number of possible moves {}, resulting score {}, depth {}, maximizing", mve, num_moves, -value, depth)
                 }
-                
+
                 alpha = max(alpha, value);
 
                 if alpha >= beta {
@@ -187,24 +228,34 @@ fn evaluate_board(board: Board) -> i16 {
     }
 }
 
-pub(crate) fn enter_engine(board: Board) {
+pub(crate) fn enter_engine(board: Board) -> ChessMove {
+    println!("=============================================");
     println!("Balance of board {}", evaluate_board(board));
 
-    let color_i: i8 = if board.side_to_move() == Color::White {1} else {-1};
+    let color_i: i8 = if board.side_to_move() == Color::White {
+        1
+    } else {
+        -1
+    };
     // The color expressed as an integer, where white == 1 and black == -1
 
     let mut run_stats = Statistics {
         all_nodes: 0,
         searched_nodes: 0,
+        caches_used: 0,
     };
+
+    // Declare cache table for transpositions
+    let mut cache: CacheTable<[i16; 2]> = CacheTable::new(65536, [0, 0]);
 
     let (best_score, best_mve, best_line) = find_best_move(
         board,
         0,
-        (i16::min_value() + 1),
-        (i16::max_value() - 1),
+        i16::min_value() + 1,
+        i16::max_value() - 1,
         color_i,
         &mut run_stats,
+        &mut cache,
     );
     println!(
         "Best move: {}, board score of best move: {}",
@@ -229,8 +280,10 @@ pub(crate) fn enter_engine(board: Board) {
         (1.0 - (run_stats.searched_nodes as f32) / (run_stats.all_nodes as f32)) * 100.0;
     if SEARCH_INFO {
         println!(
-            "Search stats. \n All nodes in problem: {}\n Nodes visited {}, reduction {}%",
-            run_stats.all_nodes, run_stats.searched_nodes, percent_reduction
+            "Search stats. \n All nodes in problem: {}\n Nodes visited {}, reduction {}%, times used cache {}",
+            run_stats.all_nodes, run_stats.searched_nodes, percent_reduction, run_stats.caches_used,
         )
     }
+
+    return best_mve
 }
