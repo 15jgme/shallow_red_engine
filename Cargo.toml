@@ -1,0 +1,8 @@
+[package]
+name = "shallow_red_engine"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chess = ">0.0.1"
+itertools = "0.10.5"
