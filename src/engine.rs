@@ -1,19 +1,19 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+use std::time::Duration;
 use std::time::SystemTime;
 
 // use std::hash::Hash;
 use chess::{BitBoard, Board, BoardStatus, CacheTable, ChessMove, Color, MoveGen, Piece, EMPTY};
 // use itertools::Itertools;
 
-use crate::data;
 use crate::ordering;
 
 // use std::thread;
-const DEPTH_LIM: i16 = 8;
+const DEPTH_LIM: i16 = 20;
 // const QUIESENT_LIM: i16 = 4;
-const TIME_LIM: i32 = 5000; // ms
+const TIME_LIM: u32 = 5000; // ms
 static DEBUG_MODE: bool = false;
 static SEARCH_INFO: bool = true;
 // static MULTI_THREAD: bool = true;
@@ -23,12 +23,7 @@ struct Statistics {
     searched_nodes: i32,
     caches_used: i32,
     time_ms: f32,
-}
-
-#[derive(Copy, Clone)]
-struct CacheSave {
-    score: i16,
-    depth: i8,
+    depth_reached: u8,
 }
 
 fn max<T: PartialOrd>(a: T, b: T) -> T {
@@ -39,18 +34,26 @@ fn max<T: PartialOrd>(a: T, b: T) -> T {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, PartialOrd)]
+pub(crate) struct CacheData {
+    pub(crate) move_depth: i16,
+    pub(crate) search_depth: i16,
+    pub(crate) evaluation: i16,
+}
+
 fn find_best_move(
     board: Board,
     depth: i16,
+    depth_lim: i16,
     mut alpha: i16,
     beta: i16,
     color_i: i8,
     stats_data: &mut Statistics,
-    cache: &mut CacheTable<[i16; 2]>,
+    cache: &mut CacheTable<CacheData>,
 ) -> (i16, ChessMove, [ChessMove; DEPTH_LIM as usize]) {
     // Copy alpha beta from parent
 
-    if (depth >= DEPTH_LIM)
+    if (depth >= depth_lim)
         || (board.status() == BoardStatus::Checkmate)
         || (board.status() == BoardStatus::Stalemate)
     {
@@ -58,16 +61,17 @@ fn find_best_move(
         let proposed_line: [ChessMove; DEPTH_LIM as usize] =
             [Default::default(); DEPTH_LIM as usize];
         // Note, issues with pruning, does weird things
-        return (
-            (color_i as i16) * search_captures(&board, alpha, beta, 0, color_i),
-            Default::default(),
-            proposed_line,
-        );
         // return (
-        //     (color_i as i16) * evaluate_board(board),
+        //     (color_i as i16) * search_captures(&board, alpha, beta, 0, color_i),
         //     Default::default(),
         //     proposed_line,
         // );
+
+        return (
+            (color_i as i16) * evaluate_board(board),
+            Default::default(),
+            proposed_line,
+        );
     }
 
     let mut max_val = i16::min_value() + 1;
@@ -83,49 +87,46 @@ fn find_best_move(
         stats_data.all_nodes += num_moves as i32
     }
 
-    let mut sorted_moves = ordering::order_moves(child_moves, board, false); // sort all the moves
+    let mut sorted_moves = ordering::order_moves(child_moves, board, cache, false, depth_lim); // sort all the moves
 
     for weighted_move in &mut sorted_moves {
         let mve = weighted_move.chessmove;
 
         let (negative_value, _best_move, proposed_line);
-        match cache.get(board.make_move_new(mve).get_hash()) {
-            Some(value) => {
-                if depth == value[1] {
-                    // We've found this move in the current search no need to assess
-                    negative_value = -value[0];
-                    _best_move = Default::default();
-                    proposed_line = [Default::default(); DEPTH_LIM as usize];
-                    stats_data.caches_used += 1;
-                } else {
-                    // We saw this move at a previous depth, can reorder moves to make it better?
-                    (negative_value, _best_move, proposed_line) = find_best_move(
-                        board.make_move_new(mve),
-                        depth + 1,
-                        -beta,
-                        -alpha,
-                        -color_i,
-                        stats_data,
-                        cache,
-                    );
-                }
+
+        match weighted_move.evaluation {
+            Some(eval) => {
+                // We've found this move in the current search no need to assess
+                negative_value = -eval;
+                _best_move = Default::default();
+                proposed_line = [Default::default(); DEPTH_LIM as usize];
+                stats_data.caches_used += 1;
             }
             None => {
                 (negative_value, _best_move, proposed_line) = find_best_move(
                     board.make_move_new(mve),
                     depth + 1,
+                    depth_lim,
                     -beta,
                     -alpha,
                     -color_i,
                     stats_data,
                     cache,
                 );
+
+                // Add move to hash
+                cache.add(
+                    board.make_move_new(mve).get_hash(),
+                    CacheData {
+                        move_depth: depth,
+                        search_depth: depth_lim,
+                        evaluation: -negative_value,
+                    },
+                );
             }
         }
 
         let value = -negative_value;
-
-        cache.add(board.make_move_new(mve).get_hash(), [value, depth]);
 
         // Update stats
         if SEARCH_INFO {
@@ -153,7 +154,15 @@ fn find_best_move(
     return (max_val, max_move, max_line);
 }
 
-fn search_captures(board: &Board, alpha_old: i16, beta: i16, depth: i16, color_i: i8) -> i16 {
+fn search_captures(
+    board: &Board,
+    alpha_old: i16,
+    beta: i16,
+    depth: i16,
+    color_i: i8,
+    cache: &mut CacheTable<CacheData>,
+    depth_lim: i16,
+) -> i16 {
     let mut alpha = alpha_old;
 
     // Search through all terminal captures
@@ -166,21 +175,28 @@ fn search_captures(board: &Board, alpha_old: i16, beta: i16, depth: i16, color_i
     alpha = max(alpha, stand_pat);
 
     let capture_moves = MoveGen::new_legal(&board);
-    let sorted_moves = ordering::order_moves(capture_moves, *board, true); // sort all the moves
+    let sorted_moves = ordering::order_moves(capture_moves, *board, cache, true, depth_lim); // sort all the moves
 
     for capture_move_score in sorted_moves {
         let capture_move = capture_move_score.chessmove;
-        let score = search_captures(&board.make_move_new(capture_move), -beta, -alpha, depth+1, -color_i);
+        let score = search_captures(
+            &board.make_move_new(capture_move),
+            -beta,
+            -alpha,
+            depth + 1,
+            -color_i,
+            cache,
+            depth_lim,
+        );
 
         if stand_pat >= beta {
             return beta;
         }
-    
+
         alpha = max(alpha, score);
     }
 
-    return alpha
-
+    return alpha;
 }
 
 fn evaluate_board(board: Board) -> i16 {
@@ -275,20 +291,52 @@ pub fn enter_engine(board: Board) -> ChessMove {
         searched_nodes: 0,
         caches_used: 0,
         time_ms: 0.0,
+        depth_reached: 1,
     };
 
     // Declare cache table for transpositions
-    let mut cache: CacheTable<[i16; 2]> = CacheTable::new(65536, [0, 0]);
-
-    let (best_score, best_mve, best_line) = find_best_move(
-        board,
-        0,
-        i16::min_value() + 1,
-        i16::max_value() - 1,
-        color_i,
-        &mut run_stats,
-        &mut cache,
+    let mut cache: CacheTable<CacheData> = CacheTable::new(
+        65536,
+        CacheData {
+            move_depth: 0,
+            search_depth: 0,
+            evaluation: 0,
+        },
     );
+
+    let t_start = SystemTime::now(); // Initial time before running
+
+    let mut terminal_depth: i16 = 1; // Starting depth
+
+    let mut best_score: i16 = 0;
+    let mut best_mve: ChessMove = Default::default();
+    let mut best_line: [ChessMove; DEPTH_LIM as usize] = Default::default();
+
+    while t_start.elapsed().unwrap() < Duration::new(5, 0) && terminal_depth <= DEPTH_LIM{ // Run until we hit the timelimit
+        println!("Current depth {}", terminal_depth);
+        (best_score, best_mve, best_line) = find_best_move(
+            board.clone(),
+            0,
+            terminal_depth,
+            i16::min_value() + 1,
+            i16::max_value() - 1,
+            color_i,
+            &mut run_stats,
+            &mut cache,
+        );
+
+        // Go farther each iteration
+        terminal_depth += 1;
+
+        println!(
+            "Best move: {}, board score of best move: {}",
+            best_mve, best_score
+        );
+    }
+    
+
+
+
     println!(
         "Best move: {}, board score of best move: {}",
         best_mve, best_score
@@ -311,11 +359,11 @@ pub fn enter_engine(board: Board) -> ChessMove {
     let percent_reduction: f32 =
         (1.0 - (run_stats.searched_nodes as f32) / (run_stats.all_nodes as f32)) * 100.0;
 
-    // get final time 
+    // get final time
     let end_time = SystemTime::now();
     match end_time.duration_since(start_time) {
         Ok(duration) => run_stats.time_ms = duration.as_millis() as f32,
-        Err(_) => {},
+        Err(_) => {}
     }
 
     if SEARCH_INFO {
