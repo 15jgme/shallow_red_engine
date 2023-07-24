@@ -1,18 +1,18 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+use chess::{BitBoard, Board, BoardStatus, CacheTable, ChessMove, Color, MoveGen, Piece, EMPTY};
 use std::time::Duration;
 use std::time::SystemTime;
 
-// use std::hash::Hash;
-use chess::{BitBoard, Board, BoardStatus, CacheTable, ChessMove, Color, MoveGen, Piece, EMPTY};
-// use itertools::Itertools;
-
+use crate::consts;
+use crate::evaluation;
+use crate::evaluation::evaluate_board;
 use crate::ordering;
 
 // use std::thread;
 const DEPTH_LIM: i16 = 20;
-// const QUIESENT_LIM: i16 = 4;
+const QUIESENT_LIM: i16 = 4;
 const TIME_LIM: u32 = 5000; // ms
 static DEBUG_MODE: bool = false;
 static SEARCH_INFO: bool = true;
@@ -38,7 +38,48 @@ fn max<T: PartialOrd>(a: T, b: T) -> T {
 pub(crate) struct CacheData {
     pub(crate) move_depth: i16,
     pub(crate) search_depth: i16,
-    pub(crate) evaluation: i16,
+    pub(crate) evaluation: Eval,
+    pub(crate) move_type: HashtableResultType, // What type of move we have
+}
+
+#[derive(Clone, Copy, PartialEq, PartialOrd)]
+pub(crate) enum HashtableResultType {
+    RegularMove,
+    PVMove,
+    CutoffMove,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq)]
+pub(crate) struct Eval {
+    pub(crate) score: i16, // Score is always (ALWAYS!) expressed as + is winning for White
+}
+
+impl Eval {
+    pub(crate) fn for_colour(&self, colour: Color) -> i16 {
+        // Returns the score for a colour where positive is more desriable for that colour
+        match colour {
+            Color::White => self.score,
+            Color::Black => -self.score,
+        }
+    }
+}
+
+fn abs_eval_from_color(eval_rel: i16, color: Color) -> Eval {
+    // Function provides a global eval struct from a local evaluation
+    // specific to one colour, and the colour it is specific to.
+
+    let eval_glob = match color {
+        Color::White => eval_rel,  // + white
+        Color::Black => -eval_rel, // Must be flipped for black
+    };
+    Eval { score: eval_glob }
+}
+
+fn flip_colour(color: Color) -> Color {
+    match color {
+        Color::White => Color::Black,
+        Color::Black => Color::White,
+    }
 }
 
 fn find_best_move(
@@ -47,10 +88,10 @@ fn find_best_move(
     depth_lim: i16,
     mut alpha: i16,
     beta: i16,
-    color_i: i8,
+    color_i: Color,
     stats_data: &mut Statistics,
     cache: &mut CacheTable<CacheData>,
-) -> (i16, ChessMove, [ChessMove; DEPTH_LIM as usize]) {
+) -> (Eval, ChessMove, [ChessMove; DEPTH_LIM as usize]) {
     // Copy alpha beta from parent
 
     if (depth >= depth_lim)
@@ -60,21 +101,27 @@ fn find_best_move(
         let mut _blank_move: ChessMove;
         let proposed_line: [ChessMove; DEPTH_LIM as usize] =
             [Default::default(); DEPTH_LIM as usize];
-        // Note, issues with pruning, does weird things
-        // return (
-        //     (color_i as i16) * search_captures(&board, alpha, beta, 0, color_i),
-        //     Default::default(),
-        //     proposed_line,
-        // );
 
+        // Note, issues with pruning, does weird things
         return (
-            (color_i as i16) * evaluate_board(board),
+            search_captures(&board, alpha, beta, 0, color_i, cache, depth_lim),
             Default::default(),
             proposed_line,
         );
+
+        // return (
+        //     evaluate_board(board),
+        //     Default::default(),
+        //     proposed_line,
+        // );
     }
 
-    let mut max_val = i16::min_value() + 1;
+    // Initialize with least desirable evaluation
+    let mut max_val = match color_i {
+        Color::White => crate::consts::UNDESIRABLE_EVAL_WHITE,
+        Color::Black => crate::consts::UNDESIRABLE_EVAL_BLACK,
+    };
+
     let mut max_move = Default::default();
     let mut max_line: [ChessMove; DEPTH_LIM as usize] = [Default::default(); DEPTH_LIM as usize];
 
@@ -92,24 +139,24 @@ fn find_best_move(
     for weighted_move in &mut sorted_moves {
         let mve = weighted_move.chessmove;
 
-        let (negative_value, _best_move, proposed_line);
+        let (node_evaluation, _best_move, proposed_line);
 
         match weighted_move.evaluation {
             Some(eval) => {
                 // We've found this move in the current search no need to assess
-                negative_value = -eval;
+                node_evaluation = eval;
                 _best_move = Default::default();
                 proposed_line = [Default::default(); DEPTH_LIM as usize];
                 stats_data.caches_used += 1;
             }
             None => {
-                (negative_value, _best_move, proposed_line) = find_best_move(
+                (node_evaluation, _best_move, proposed_line) = find_best_move(
                     board.make_move_new(mve),
                     depth + 1,
                     depth_lim,
                     -beta,
                     -alpha,
-                    -color_i,
+                    flip_colour(color_i),
                     stats_data,
                     cache,
                 );
@@ -120,36 +167,60 @@ fn find_best_move(
                     CacheData {
                         move_depth: depth,
                         search_depth: depth_lim,
-                        evaluation: -negative_value,
+                        evaluation: node_evaluation,
+                        move_type: HashtableResultType::RegularMove,
                     },
                 );
             }
         }
-
-        let value = -negative_value;
 
         // Update stats
         if SEARCH_INFO {
             stats_data.searched_nodes += 1
         }
 
-        if value > max_val {
-            max_val = value;
+        // Replace with best move if we determine the move is the best for our current board side
+        if node_evaluation.for_colour(color_i) > max_val.for_colour(color_i) {
+            max_val = node_evaluation;
             max_move = mve;
             max_line = proposed_line;
             max_line[depth as usize] = max_move;
         }
 
         if DEBUG_MODE {
-            println!("Move under consideration {}, number of possible moves {}, resulting score {}, depth {}, maximizing", mve, num_moves, -value, depth)
+            println!("Move under consideration {}, number of possible moves {}, evaluation (for colour) {}, depth {}, colour {:#?}", mve, num_moves, node_evaluation.for_colour(color_i), depth, color_i)
         }
 
-        alpha = max(alpha, value);
+        alpha = max(alpha, node_evaluation.for_colour(board.side_to_move()));
 
         if alpha >= beta {
+            // Alpha beta cutoff here
+
+            // Record in cache that this is a cutoff move
+            cache.add(
+                board.make_move_new(mve).get_hash(),
+                CacheData {
+                    move_depth: depth,
+                    search_depth: depth_lim,
+                    evaluation: node_evaluation,
+                    move_type: HashtableResultType::CutoffMove,
+                },
+            );
+
             break;
         }
     }
+
+    // Overwrite the PV move in the hash
+    cache.add(
+        board.make_move_new(max_move).get_hash(),
+        CacheData {
+            move_depth: depth,
+            search_depth: depth_lim,
+            evaluation: max_val,
+            move_type: HashtableResultType::PVMove,
+        },
+    );
 
     return (max_val, max_move, max_line);
 }
@@ -159,20 +230,19 @@ fn search_captures(
     alpha_old: i16,
     beta: i16,
     depth: i16,
-    color_i: i8,
+    color_i: Color,
     cache: &mut CacheTable<CacheData>,
     depth_lim: i16,
-) -> i16 {
+) -> Eval {
     let mut alpha = alpha_old;
 
     // Search through all terminal captures
-    let colour_at_depth: i16 = if depth == 0 { 1 } else { color_i as i16 };
-    let stand_pat = colour_at_depth * evaluate_board(*board); // sign doesnt really matter still fucked up
-    if stand_pat >= beta {
-        return beta;
+    let stand_pat = evaluate_board(*board);
+    if stand_pat.for_colour(color_i) >= beta || depth > QUIESENT_LIM {
+        return abs_eval_from_color(beta, color_i);
     }
 
-    alpha = max(alpha, stand_pat);
+    alpha = max(alpha, stand_pat.for_colour(color_i));
 
     let capture_moves = MoveGen::new_legal(&board);
     let sorted_moves = ordering::order_moves(capture_moves, *board, cache, true, depth_lim); // sort all the moves
@@ -184,106 +254,29 @@ fn search_captures(
             -beta,
             -alpha,
             depth + 1,
-            -color_i,
+            flip_colour(color_i),
             cache,
             depth_lim,
         );
 
-        if stand_pat >= beta {
-            return beta;
+        if score.for_colour(color_i) >= beta {
+            return abs_eval_from_color(beta, color_i);
         }
 
-        alpha = max(alpha, score);
+        alpha = max(alpha, score.for_colour(color_i));
     }
 
-    return alpha;
-}
-
-fn evaluate_board(board: Board) -> i16 {
-    // Returns the current score on the board where white winning is positive and black winning is negative
-
-    match board.status() {
-        BoardStatus::Checkmate => {
-            // We are always in checkmate with the current side to move
-            // Since checkmate ends the game, we only need to asses it once
-            // Since we assess after a move, it is safe to check at the child node level
-            match board.side_to_move() {
-                Color::White => return i16::min_value() + 1,
-                Color::Black => return i16::max_value() - 1,
-            }
-        }
-        BoardStatus::Stalemate => {
-            return 0; // Stalemate is a draw game
-        }
-        BoardStatus::Ongoing => {
-            // List of values
-            let v_pawn: i16 = 100;
-            let v_knight: i16 = 300;
-            let v_bishop: i16 = 300;
-            let v_rook: i16 = 500;
-            let v_queen: i16 = 900;
-
-            let v_king: i16 = 2500; // Temporary, ensure that the king is super valuable
-
-            let mut score: i16 = 0;
-
-            // for p in board.pieces(Piece::Pawn) & board.color_combined(Color::Black) {
-            //     p
-            // }
-
-            let black_pawns =
-                (board.pieces(Piece::Pawn) & board.color_combined(Color::Black)).popcnt() as i16;
-            let white_pawns =
-                (board.pieces(Piece::Pawn) & board.color_combined(Color::White)).popcnt() as i16;
-
-            let black_knight =
-                (board.pieces(Piece::Knight) & board.color_combined(Color::Black)).popcnt() as i16;
-            let white_knight =
-                (board.pieces(Piece::Knight) & board.color_combined(Color::White)).popcnt() as i16;
-
-            let black_bishop =
-                (board.pieces(Piece::Bishop) & board.color_combined(Color::Black)).popcnt() as i16;
-            let white_bishop =
-                (board.pieces(Piece::Bishop) & board.color_combined(Color::White)).popcnt() as i16;
-
-            let black_rook =
-                (board.pieces(Piece::Rook) & board.color_combined(Color::Black)).popcnt() as i16;
-            let white_rook =
-                (board.pieces(Piece::Rook) & board.color_combined(Color::White)).popcnt() as i16;
-
-            let black_queen =
-                (board.pieces(Piece::Queen) & board.color_combined(Color::Black)).popcnt() as i16;
-            let white_queen =
-                (board.pieces(Piece::Queen) & board.color_combined(Color::White)).popcnt() as i16;
-
-            let black_king =
-                (board.pieces(Piece::King) & board.color_combined(Color::Black)).popcnt() as i16;
-            let white_king =
-                (board.pieces(Piece::King) & board.color_combined(Color::White)).popcnt() as i16;
-
-            score += (white_pawns - black_pawns) * v_pawn;
-            score += (white_knight - black_knight) * v_knight;
-            score += (white_bishop - black_bishop) * v_bishop;
-            score += (white_rook - black_rook) * v_rook;
-            score += (white_queen - black_queen) * v_queen;
-            score += (white_king - black_king) * v_king; // Temporary
-
-            return score;
-        }
-    }
+    return abs_eval_from_color(alpha, color_i);
 }
 
 pub fn enter_engine(board: Board) -> ChessMove {
     println!("=============================================");
-    println!("Balance of board {}", evaluate_board(board));
+    println!("Balance of board {}", evaluate_board(board).score);
 
     let start_time = SystemTime::now();
 
-    let color_i: i8 = if board.side_to_move() == Color::White {
-        1
-    } else {
-        -1
-    };
+    let color_i: Color = board.side_to_move();
+
     // The color expressed as an integer, where white == 1 and black == -1
 
     let mut run_stats = Statistics {
@@ -300,7 +293,8 @@ pub fn enter_engine(board: Board) -> ChessMove {
         CacheData {
             move_depth: 0,
             search_depth: 0,
-            evaluation: 0,
+            evaluation: Eval { score: 0 },
+            move_type: HashtableResultType::RegularMove,
         },
     );
 
@@ -308,11 +302,12 @@ pub fn enter_engine(board: Board) -> ChessMove {
 
     let mut terminal_depth: i16 = 1; // Starting depth
 
-    let mut best_score: i16 = 0;
+    let mut best_score: Eval = Eval { score: 0 };
     let mut best_mve: ChessMove = Default::default();
     let mut best_line: [ChessMove; DEPTH_LIM as usize] = Default::default();
 
-    while t_start.elapsed().unwrap() < Duration::new(5, 0) && terminal_depth <= DEPTH_LIM{ // Run until we hit the timelimit
+    while t_start.elapsed().unwrap() < Duration::new(5, 0) && terminal_depth <= DEPTH_LIM {
+        // Run until we hit the timelimit
         println!("Current depth {}", terminal_depth);
         (best_score, best_mve, best_line) = find_best_move(
             board.clone(),
@@ -329,22 +324,20 @@ pub fn enter_engine(board: Board) -> ChessMove {
         terminal_depth += 1;
 
         println!(
-            "Best move: {}, board score of best move: {}",
-            best_mve, best_score
+            "Best move: {}, board score of best move (global): {}",
+            best_mve,
+            best_score.score
         );
     }
-    
-
-
 
     println!(
         "Best move: {}, board score of best move: {}",
-        best_mve, best_score
+        best_mve, best_score.score
     );
 
     println!("Proposed line:");
     let mut i: i8 = 1;
-    let mut is_white = color_i == 1;
+    let mut is_white = color_i == Color::White;
     for mve in best_line {
         if is_white {
             println!("White, Move {}: {}", i, mve);

@@ -1,10 +1,6 @@
 use std::cmp::Ordering;
-
-// use itertools::Itertools;
-
 use chess::{Board, ChessMove, MoveGen, Piece, EMPTY};
-
-use crate::engine::CacheData;
+use crate::engine::{CacheData, HashtableResultType, Eval};
 
 fn get_piece_weight(piece: Piece) -> i16 {
     // Return the estimated value of a piece
@@ -19,10 +15,10 @@ fn get_piece_weight(piece: Piece) -> i16 {
 }
 
 #[derive(Eq)]
-pub struct WeightedMove {
-    pub chessmove: ChessMove,
-    pub score: i16,
-    pub evaluation: Option<i16>, // If we found an evaluation at the same depth search
+pub(crate) struct WeightedMove {
+    pub(crate) chessmove: ChessMove,
+    pub(crate) score: i16,
+    pub(crate) evaluation: Option<Eval>, // If we found an evaluation at the same depth search
 }
 
 impl Ord for WeightedMove {
@@ -52,6 +48,10 @@ pub(crate) fn order_moves(
 ) -> Vec<WeightedMove> {
     // Order_moves is responsible for taking in a movegen and returning a vector of moves that
     // are ordered in some 'ideal' (heuristic) way.
+
+    // Generally good moves (best to search)
+    let mut moves_pv: Vec<WeightedMove> = Vec::new();
+    let mut moves_cutoffs: Vec<WeightedMove> = Vec::new();
 
     // Capture moves
 
@@ -89,18 +89,41 @@ pub(crate) fn order_moves(
                     // Check if we found it at the current search depth to see if evaluation is valid
                     let evaluation_valid = cache_result.search_depth == search_depth;
 
-                    let evaluation: Option<i16> = if evaluation_valid {
+                    let evaluation: Option<Eval> = if evaluation_valid {
                         Some(cache_result.evaluation)
                     } else {
                         None
                     };
 
-                    // Push the weighted move struct to the vector
-                    moves_captures.push(WeightedMove {
-                        chessmove: capture_move,
-                        score: cache_result.evaluation,
-                        evaluation: evaluation,
-                    });
+                    match cache_result.move_type {
+                        HashtableResultType::RegularMove =>
+                        // Push the weighted move struct to the regular capture vector
+                        {
+                            moves_captures.push(WeightedMove {
+                                chessmove: capture_move,
+                                score: cache_result.evaluation.for_colour(board.side_to_move()),
+                                evaluation: evaluation,
+                            })
+                        }
+                        HashtableResultType::PVMove =>
+                        // Push the weighted move struct to the PV vector
+                        {
+                            moves_pv.push(WeightedMove {
+                                chessmove: capture_move,
+                                score: cache_result.evaluation.for_colour(board.side_to_move()),
+                                evaluation: evaluation,
+                            })
+                        }
+                        HashtableResultType::CutoffMove =>
+                        // Push the weighted move struct to the cutoff vector
+                        {
+                            moves_cutoffs.push(WeightedMove {
+                                chessmove: capture_move,
+                                score: cache_result.evaluation.for_colour(board.side_to_move()),
+                                evaluation: evaluation,
+                            })
+                        }
+                    }
                 }
                 None => {
                     // Move not found in cache
@@ -133,18 +156,41 @@ pub(crate) fn order_moves(
                     // Check if we found it at the current search depth to see if evaluation is valid
                     let evaluation_valid = cache_result.search_depth == search_depth;
 
-                    let evaluation: Option<i16> = if evaluation_valid {
+                    let evaluation: Option<Eval> = if evaluation_valid {
                         Some(cache_result.evaluation)
                     } else {
                         None
                     };
 
-                    // Push the weighted move struct to the vector
-                    moves_other_cached.push(WeightedMove {
-                        chessmove: other_move,
-                        score: cache_result.evaluation,
-                        evaluation: evaluation,
-                    });
+                    match cache_result.move_type {
+                        HashtableResultType::RegularMove =>
+                        // Push the weighted move struct to the regular moves other vector
+                        {
+                            moves_other_cached.push(WeightedMove {
+                                chessmove: other_move,
+                                score: cache_result.evaluation.for_colour(board.side_to_move()),
+                                evaluation: evaluation,
+                            })
+                        }
+                        HashtableResultType::PVMove =>
+                        // Push the weighted move struct to the regular moves other vector
+                        {
+                            moves_pv.push(WeightedMove {
+                                chessmove: other_move,
+                                score: cache_result.evaluation.for_colour(board.side_to_move()),
+                                evaluation: evaluation,
+                            })
+                        }
+                        HashtableResultType::CutoffMove =>
+                        // Push the weighted move struct to the regular moves other vector
+                        {
+                            moves_cutoffs.push(WeightedMove {
+                                chessmove: other_move,
+                                score: cache_result.evaluation.for_colour(board.side_to_move()),
+                                evaluation: evaluation,
+                            })
+                        }
+                    }
                 }
                 None => {
                     // Move not found in cache
@@ -161,11 +207,15 @@ pub(crate) fn order_moves(
         // Sort other moves (descending order)
         moves_other_cached.sort_by(|a, b| b.cmp(a));
 
-        // Order is as follows, cached capture moves > capture moves > cached non-captures > non-captures
-        moves_captures_cached.append(&mut moves_captures);
-        moves_captures_cached.append(&mut moves_other_cached);
-        moves_captures_cached.append(&mut moves_other);
+        moves_cutoffs.sort_by(|a, b| b.cmp(a));
+
+        // Order is as follows, pv > cutoffs > cached capture moves > capture moves > cached non-captures > non-captures
+        moves_pv.append(&mut moves_cutoffs);
+        moves_pv.append(&mut moves_captures_cached);
+        moves_pv.append(&mut moves_captures);
+        moves_pv.append(&mut moves_other_cached);
+        moves_pv.append(&mut moves_other);
     }
 
-    return moves_captures_cached;
+    return moves_pv;
 }
