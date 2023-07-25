@@ -116,15 +116,6 @@ fn find_best_move(
         // );
     }
 
-    // Initialize with least desirable evaluation
-    let mut max_val = match color_i {
-        Color::White => crate::consts::UNDESIRABLE_EVAL_WHITE,
-        Color::Black => crate::consts::UNDESIRABLE_EVAL_BLACK,
-    };
-
-    let mut max_move = Default::default();
-    let mut max_line: [ChessMove; DEPTH_LIM as usize] = [Default::default(); DEPTH_LIM as usize];
-
     // Generate moves
     let child_moves = MoveGen::new_legal(&board);
     // Get length of moves
@@ -135,6 +126,15 @@ fn find_best_move(
     }
 
     let mut sorted_moves = ordering::order_moves(child_moves, board, cache, false, depth_lim); // sort all the moves
+
+    // Initialize with least desirable evaluation
+    let mut max_val = match color_i {
+        Color::White => crate::consts::UNDESIRABLE_EVAL_WHITE,
+        Color::Black => crate::consts::UNDESIRABLE_EVAL_BLACK,
+    };
+
+    let mut max_move = sorted_moves[0].chessmove.clone();
+    let mut max_line: [ChessMove; DEPTH_LIM as usize] = [max_move; DEPTH_LIM as usize];
 
     for weighted_move in &mut sorted_moves {
         let mve = weighted_move.chessmove;
@@ -269,7 +269,7 @@ fn search_captures(
     return abs_eval_from_color(alpha, color_i);
 }
 
-pub fn enter_engine(board: Board) -> ChessMove {
+pub async fn enter_engine(board: Board) -> ChessMove {
     println!("=============================================");
     println!("Balance of board {}", evaluate_board(board).score);
 
@@ -309,6 +309,7 @@ pub fn enter_engine(board: Board) -> ChessMove {
     while t_start.elapsed().unwrap() < Duration::new(5, 0) && terminal_depth <= DEPTH_LIM {
         // Run until we hit the timelimit
         println!("Current depth {}", terminal_depth);
+
         (best_score, best_mve, best_line) = find_best_move(
             board.clone(),
             0,
@@ -325,8 +326,7 @@ pub fn enter_engine(board: Board) -> ChessMove {
 
         println!(
             "Best move: {}, board score of best move (global): {}",
-            best_mve,
-            best_score.score
+            best_mve, best_score.score
         );
     }
 
