@@ -25,7 +25,7 @@ pub(crate) fn evaluate_board(board: Board) -> Eval {
             let v_rook: i16 = 500;
             let v_queen: i16 = 900;
 
-            let v_king: i16 = 2500; // Temporary, ensure that the king is super valuable
+            let v_king: i16 = i16::MAX; // Temporary, ensure that the king is super valuable
 
             let mut score: i16 = 0;
 
