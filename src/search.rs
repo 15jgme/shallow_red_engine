@@ -1,8 +1,10 @@
+use std::time::SystemTime;
+
 use chess::{Board, Color, CacheTable, MoveGen, ChessMove, BoardStatus};
 use crate::consts;
 use crate::engine::HashtableResultType;
 use crate::quiescent::search_captures;
-use crate::{engine::{CacheData, Eval, abs_eval_from_color, max, flip_colour, Statistics}, evaluation::evaluate_board, ordering, consts::QUIESENT_LIM};
+use crate::{engine::{CacheData, Eval, max, flip_colour, Statistics}, ordering};
 
 
 
@@ -15,8 +17,14 @@ pub(crate) fn find_best_move(
     color_i: Color,
     stats_data: &mut Statistics,
     cache: &mut CacheTable<CacheData>,
-) -> (Eval, ChessMove, [ChessMove; consts::DEPTH_LIM as usize]) {
-    // Copy alpha beta from parent
+    t_start: &SystemTime
+) -> Result<(Eval, ChessMove, [ChessMove; consts::DEPTH_LIM as usize]), ()> {
+
+    // First check if we're overruning the time limit (provided of depth isnt so large)
+    if depth <= consts::MAX_DEPTH_TO_CHECK_TIME && t_start.elapsed().unwrap() > consts::TIME_LIM {
+        println!("Cancelling search");
+        return Err(()) // Throw an error to abort this depth
+    }
 
     if (depth >= depth_lim)
         || (board.status() == BoardStatus::Checkmate)
@@ -27,11 +35,11 @@ pub(crate) fn find_best_move(
             [Default::default(); consts::DEPTH_LIM as usize];
 
         // Note, issues with pruning, does weird things
-        return (
+        return Ok((
             search_captures(&board, alpha, beta, 0, color_i, cache, depth_lim),
             Default::default(),
             proposed_line,
-        );
+        ));
 
         // return (
         //     evaluate_board(board),
@@ -83,7 +91,8 @@ pub(crate) fn find_best_move(
                     flip_colour(color_i),
                     stats_data,
                     cache,
-                );
+                    t_start
+                )?;
 
                 // Add move to hash
                 cache.add(
@@ -146,5 +155,5 @@ pub(crate) fn find_best_move(
         },
     );
 
-    return (max_val, max_move, max_line);
+    return Ok((max_val, max_move, max_line));
 }

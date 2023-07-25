@@ -113,11 +113,11 @@ pub async fn enter_engine(board: Board) -> ChessMove {
     let mut best_mve: ChessMove = Default::default();
     let mut best_line: [ChessMove; consts::DEPTH_LIM as usize] = Default::default();
 
-    while t_start.elapsed().unwrap() < Duration::new(5, 0) && terminal_depth <= consts::DEPTH_LIM {
+    while t_start.elapsed().unwrap() < consts::TIME_LIM && terminal_depth <= consts::DEPTH_LIM {
         // Run until we hit the timelimit
         println!("Current depth {}", terminal_depth);
 
-        (best_score, best_mve, best_line) = find_best_move(
+        let search_result = find_best_move(
             board.clone(),
             0,
             terminal_depth,
@@ -126,7 +126,13 @@ pub async fn enter_engine(board: Board) -> ChessMove {
             color_i,
             &mut run_stats,
             &mut cache,
+            &t_start,
         );
+
+        match search_result {
+            Ok(result) => (best_score, best_mve, best_line) = result,
+            Err(_) => println!("Depth aborted"),
+        }
 
         // Go farther each iteration
         terminal_depth += 1;
