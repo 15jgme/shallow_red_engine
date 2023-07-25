@@ -9,24 +9,18 @@ use crate::consts;
 use crate::evaluation;
 use crate::evaluation::evaluate_board;
 use crate::ordering;
+use crate::quiescent::search_captures;
+use crate::search::find_best_move;
 
-// use std::thread;
-const DEPTH_LIM: i16 = 20;
-const QUIESENT_LIM: i16 = 4;
-const TIME_LIM: u32 = 5000; // ms
-static DEBUG_MODE: bool = false;
-static SEARCH_INFO: bool = true;
-// static MULTI_THREAD: bool = true;
-
-struct Statistics {
-    all_nodes: i32,
-    searched_nodes: i32,
-    caches_used: i32,
-    time_ms: f32,
-    depth_reached: u8,
+pub(crate) struct Statistics {
+    pub(crate) all_nodes: i32,
+    pub(crate) searched_nodes: i32,
+    pub(crate) caches_used: i32,
+    pub(crate) time_ms: f32,
+    pub(crate) depth_reached: u8,
 }
 
-fn max<T: PartialOrd>(a: T, b: T) -> T {
+pub(crate) fn max<T: PartialOrd>(a: T, b: T) -> T {
     if a >= b {
         a
     } else {
@@ -64,7 +58,7 @@ impl Eval {
     }
 }
 
-fn abs_eval_from_color(eval_rel: i16, color: Color) -> Eval {
+pub(crate) fn abs_eval_from_color(eval_rel: i16, color: Color) -> Eval {
     // Function provides a global eval struct from a local evaluation
     // specific to one colour, and the colour it is specific to.
 
@@ -75,198 +69,11 @@ fn abs_eval_from_color(eval_rel: i16, color: Color) -> Eval {
     Eval { score: eval_glob }
 }
 
-fn flip_colour(color: Color) -> Color {
+pub(crate) fn flip_colour(color: Color) -> Color {
     match color {
         Color::White => Color::Black,
         Color::Black => Color::White,
     }
-}
-
-fn find_best_move(
-    board: Board,
-    depth: i16,
-    depth_lim: i16,
-    mut alpha: i16,
-    beta: i16,
-    color_i: Color,
-    stats_data: &mut Statistics,
-    cache: &mut CacheTable<CacheData>,
-) -> (Eval, ChessMove, [ChessMove; DEPTH_LIM as usize]) {
-    // Copy alpha beta from parent
-
-    if (depth >= depth_lim)
-        || (board.status() == BoardStatus::Checkmate)
-        || (board.status() == BoardStatus::Stalemate)
-    {
-        let mut _blank_move: ChessMove;
-        let proposed_line: [ChessMove; DEPTH_LIM as usize] =
-            [Default::default(); DEPTH_LIM as usize];
-
-        // Note, issues with pruning, does weird things
-        return (
-            search_captures(&board, alpha, beta, 0, color_i, cache, depth_lim),
-            Default::default(),
-            proposed_line,
-        );
-
-        // return (
-        //     evaluate_board(board),
-        //     Default::default(),
-        //     proposed_line,
-        // );
-    }
-
-    // Generate moves
-    let child_moves = MoveGen::new_legal(&board);
-    // Get length of moves
-    let num_moves = child_moves.len();
-
-    if SEARCH_INFO {
-        stats_data.all_nodes += num_moves as i32
-    }
-
-    let mut sorted_moves = ordering::order_moves(child_moves, board, cache, false, depth_lim); // sort all the moves
-
-    // Initialize with least desirable evaluation
-    let mut max_val = match color_i {
-        Color::White => crate::consts::UNDESIRABLE_EVAL_WHITE,
-        Color::Black => crate::consts::UNDESIRABLE_EVAL_BLACK,
-    };
-
-    let mut max_move = sorted_moves[0].chessmove.clone();
-    let mut max_line: [ChessMove; DEPTH_LIM as usize] = [max_move; DEPTH_LIM as usize];
-
-    for weighted_move in &mut sorted_moves {
-        let mve = weighted_move.chessmove;
-
-        let (node_evaluation, _best_move, proposed_line);
-
-        match weighted_move.evaluation {
-            Some(eval) => {
-                // We've found this move in the current search no need to assess
-                node_evaluation = eval;
-                _best_move = Default::default();
-                proposed_line = [Default::default(); DEPTH_LIM as usize];
-                stats_data.caches_used += 1;
-            }
-            None => {
-                (node_evaluation, _best_move, proposed_line) = find_best_move(
-                    board.make_move_new(mve),
-                    depth + 1,
-                    depth_lim,
-                    -beta,
-                    -alpha,
-                    flip_colour(color_i),
-                    stats_data,
-                    cache,
-                );
-
-                // Add move to hash
-                cache.add(
-                    board.make_move_new(mve).get_hash(),
-                    CacheData {
-                        move_depth: depth,
-                        search_depth: depth_lim,
-                        evaluation: node_evaluation,
-                        move_type: HashtableResultType::RegularMove,
-                    },
-                );
-            }
-        }
-
-        // Update stats
-        if SEARCH_INFO {
-            stats_data.searched_nodes += 1
-        }
-
-        // Replace with best move if we determine the move is the best for our current board side
-        if node_evaluation.for_colour(color_i) > max_val.for_colour(color_i) {
-            max_val = node_evaluation;
-            max_move = mve;
-            max_line = proposed_line;
-            max_line[depth as usize] = max_move;
-        }
-
-        if DEBUG_MODE {
-            println!("Move under consideration {}, number of possible moves {}, evaluation (for colour) {}, depth {}, colour {:#?}", mve, num_moves, node_evaluation.for_colour(color_i), depth, color_i)
-        }
-
-        alpha = max(alpha, node_evaluation.for_colour(board.side_to_move()));
-
-        if alpha >= beta {
-            // Alpha beta cutoff here
-
-            // Record in cache that this is a cutoff move
-            cache.add(
-                board.make_move_new(mve).get_hash(),
-                CacheData {
-                    move_depth: depth,
-                    search_depth: depth_lim,
-                    evaluation: node_evaluation,
-                    move_type: HashtableResultType::CutoffMove,
-                },
-            );
-
-            break;
-        }
-    }
-
-    // Overwrite the PV move in the hash
-    cache.add(
-        board.make_move_new(max_move).get_hash(),
-        CacheData {
-            move_depth: depth,
-            search_depth: depth_lim,
-            evaluation: max_val,
-            move_type: HashtableResultType::PVMove,
-        },
-    );
-
-    return (max_val, max_move, max_line);
-}
-
-fn search_captures(
-    board: &Board,
-    alpha_old: i16,
-    beta: i16,
-    depth: i16,
-    color_i: Color,
-    cache: &mut CacheTable<CacheData>,
-    depth_lim: i16,
-) -> Eval {
-    let mut alpha = alpha_old;
-
-    // Search through all terminal captures
-    let stand_pat = evaluate_board(*board);
-    if stand_pat.for_colour(color_i) >= beta || depth > QUIESENT_LIM {
-        return abs_eval_from_color(beta, color_i);
-    }
-
-    alpha = max(alpha, stand_pat.for_colour(color_i));
-
-    let capture_moves = MoveGen::new_legal(&board);
-    let sorted_moves = ordering::order_moves(capture_moves, *board, cache, true, depth_lim); // sort all the moves
-
-    for capture_move_score in sorted_moves {
-        let capture_move = capture_move_score.chessmove;
-        let score = search_captures(
-            &board.make_move_new(capture_move),
-            -beta,
-            -alpha,
-            depth + 1,
-            flip_colour(color_i),
-            cache,
-            depth_lim,
-        );
-
-        if score.for_colour(color_i) >= beta {
-            return abs_eval_from_color(beta, color_i);
-        }
-
-        alpha = max(alpha, score.for_colour(color_i));
-    }
-
-    return abs_eval_from_color(alpha, color_i);
 }
 
 pub async fn enter_engine(board: Board) -> ChessMove {
@@ -304,9 +111,9 @@ pub async fn enter_engine(board: Board) -> ChessMove {
 
     let mut best_score: Eval = Eval { score: 0 };
     let mut best_mve: ChessMove = Default::default();
-    let mut best_line: [ChessMove; DEPTH_LIM as usize] = Default::default();
+    let mut best_line: [ChessMove; consts::DEPTH_LIM as usize] = Default::default();
 
-    while t_start.elapsed().unwrap() < Duration::new(5, 0) && terminal_depth <= DEPTH_LIM {
+    while t_start.elapsed().unwrap() < Duration::new(5, 0) && terminal_depth <= consts::DEPTH_LIM {
         // Run until we hit the timelimit
         println!("Current depth {}", terminal_depth);
 
@@ -359,7 +166,7 @@ pub async fn enter_engine(board: Board) -> ChessMove {
         Err(_) => {}
     }
 
-    if SEARCH_INFO {
+    if consts::SEARCH_INFO {
         println!(
             "Search stats. \n All nodes in problem: {}\n Nodes visited {}, reduction {}%, times used cache {}, time elapsed (ms) {}",
             run_stats.all_nodes, run_stats.searched_nodes, percent_reduction, run_stats.caches_used, run_stats.time_ms,
