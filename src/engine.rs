@@ -2,6 +2,8 @@
 #![allow(unused_imports)]
 
 use chess::{BitBoard, Board, BoardStatus, CacheTable, ChessMove, Color, MoveGen, Piece, EMPTY};
+use std::ops::Add;
+use std::ops::AddAssign;
 use std::time::Duration;
 use std::time::SystemTime;
 
@@ -57,6 +59,23 @@ impl Eval {
         }
     }
 }
+
+impl Add for Eval {
+    type Output = Eval;
+
+    fn add(self, rhs: Eval) -> Self::Output {
+        Eval{
+            score: self.score + rhs.score
+        }
+    }
+}
+
+impl AddAssign for Eval {
+    fn add_assign(&mut self, rhs:  Eval) {
+        self.score += rhs.score
+    }
+}
+
 
 pub(crate) fn abs_eval_from_color(eval_rel: i16, color: Color) -> Eval {
     // Function provides a global eval struct from a local evaluation
