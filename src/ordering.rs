@@ -1,6 +1,8 @@
 use std::cmp::Ordering;
 use chess::{Board, ChessMove, MoveGen, Piece, EMPTY};
 use crate::engine::{CacheData, HashtableResultType, Eval};
+use crate::consts::USE_CACHE;
+use crate::search;
 
 fn get_piece_weight(piece: Piece) -> i16 {
     // Return the estimated value of a piece
@@ -17,13 +19,13 @@ fn get_piece_weight(piece: Piece) -> i16 {
 #[derive(Eq)]
 pub(crate) struct WeightedMove {
     pub(crate) chessmove: ChessMove,
-    pub(crate) score: i16,
+    sort_val: i16,                       // Only to be used internally for sorting
     pub(crate) evaluation: Option<Eval>, // If we found an evaluation at the same depth search
 }
 
 impl Ord for WeightedMove {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.score.cmp(&other.score)
+        self.sort_val.cmp(&other.sort_val)
     }
 }
 
@@ -35,7 +37,7 @@ impl PartialOrd for WeightedMove {
 
 impl PartialEq for WeightedMove {
     fn eq(&self, other: &Self) -> bool {
-        self.score == other.score
+        self.sort_val == other.sort_val
     }
 }
 
@@ -44,7 +46,9 @@ pub(crate) fn order_moves(
     board: Board,
     cache: &mut chess::CacheTable<CacheData>,
     captures_only: bool,
-    search_depth: i16,
+    avoid_cache: bool,
+    current_depth: i16,
+    search_lim_depth: i16,
 ) -> Vec<WeightedMove> {
     // Order_moves is responsible for taking in a movegen and returning a vector of moves that
     // are ordered in some 'ideal' (heuristic) way.
@@ -82,12 +86,16 @@ pub(crate) fn order_moves(
             }
             // moves_captures.push(WeightedMove { chessmove: capture_move, score: 0});
 
-            // Check if this move is in our cache
-            match cache.get(board.make_move_new(capture_move).get_hash()) {
+            // Check if this move is in our cache (with a flag to disable cache lookup)
+            let cache_result = if USE_CACHE && !avoid_cache { cache.get(board.make_move_new(capture_move).get_hash()) } else { None };
+            match  cache_result {
                 Some(cache_result) => {
                     // Move found in cache
                     // Check if we found it at the current search depth to see if evaluation is valid
-                    let evaluation_valid = cache_result.search_depth == search_depth;
+                    // We do this by making sure that our cache has AT LEAST the same look ahead distance as we do right now
+                    let cache_lookahead = cache_result.search_depth - cache_result.move_depth;
+                    let current_lookahead = search_lim_depth - current_depth;
+                    let evaluation_valid = cache_lookahead > current_lookahead;
 
                     let evaluation: Option<Eval> = if evaluation_valid {
                         Some(cache_result.evaluation)
@@ -101,7 +109,7 @@ pub(crate) fn order_moves(
                         {
                             moves_captures.push(WeightedMove {
                                 chessmove: capture_move,
-                                score: cache_result.evaluation.for_colour(board.side_to_move()),
+                                sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
                                 evaluation: evaluation,
                             })
                         }
@@ -110,7 +118,7 @@ pub(crate) fn order_moves(
                         {
                             moves_pv.push(WeightedMove {
                                 chessmove: capture_move,
-                                score: cache_result.evaluation.for_colour(board.side_to_move()),
+                                sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
                                 evaluation: evaluation,
                             })
                         }
@@ -119,7 +127,7 @@ pub(crate) fn order_moves(
                         {
                             moves_cutoffs.push(WeightedMove {
                                 chessmove: capture_move,
-                                score: cache_result.evaluation.for_colour(board.side_to_move()),
+                                sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
                                 evaluation: evaluation,
                             })
                         }
@@ -130,7 +138,7 @@ pub(crate) fn order_moves(
                     // Push the weighted move struct to the vector
                     moves_captures.push(WeightedMove {
                         chessmove: capture_move,
-                        score: captured_piece_wt - own_piece_wt,
+                        sort_val: captured_piece_wt - own_piece_wt,
                         evaluation: None,
                     });
                 }
@@ -150,11 +158,16 @@ pub(crate) fn order_moves(
 
         moves.set_iterator_mask(!EMPTY);
         for other_move in &mut moves {
-            match cache.get(board.make_move_new(other_move).get_hash()) {
+
+            // Check if this move is in our cache (with a flag to disable cache lookup)
+            let cache_result = if USE_CACHE && !avoid_cache { cache.get(board.make_move_new(other_move).get_hash()) } else { None };
+            match cache_result {
                 Some(cache_result) => {
                     // Move found in cache
-                    // Check if we found it at the current search depth to see if evaluation is valid
-                    let evaluation_valid = cache_result.search_depth == search_depth;
+                    // We do this by making sure that our cache has AT LEAST the same look ahead distance as we do right now
+                    let cache_lookahead = cache_result.search_depth - cache_result.move_depth;
+                    let current_lookahead = search_lim_depth - current_depth;
+                    let evaluation_valid = cache_lookahead > current_lookahead;
 
                     let evaluation: Option<Eval> = if evaluation_valid {
                         Some(cache_result.evaluation)
@@ -168,7 +181,7 @@ pub(crate) fn order_moves(
                         {
                             moves_other_cached.push(WeightedMove {
                                 chessmove: other_move,
-                                score: cache_result.evaluation.for_colour(board.side_to_move()),
+                                sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
                                 evaluation: evaluation,
                             })
                         }
@@ -177,7 +190,7 @@ pub(crate) fn order_moves(
                         {
                             moves_pv.push(WeightedMove {
                                 chessmove: other_move,
-                                score: cache_result.evaluation.for_colour(board.side_to_move()),
+                                sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
                                 evaluation: evaluation,
                             })
                         }
@@ -186,7 +199,7 @@ pub(crate) fn order_moves(
                         {
                             moves_cutoffs.push(WeightedMove {
                                 chessmove: other_move,
-                                score: cache_result.evaluation.for_colour(board.side_to_move()),
+                                sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
                                 evaluation: evaluation,
                             })
                         }
@@ -197,7 +210,7 @@ pub(crate) fn order_moves(
                     // Push the weighted move struct to the vector
                     moves_other.push(WeightedMove {
                         chessmove: other_move,
-                        score: 0,
+                        sort_val: 0,
                         evaluation: None,
                     });
                 }

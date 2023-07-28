@@ -107,7 +107,6 @@ pub(crate) fn evaluate_board(board: Board) -> Eval {
             return Eval { score: 0 }; // Stalemate is a draw game
         }
         BoardStatus::Ongoing => {
-
             let material_eval = evaluate_board_material(&board);
             let psqt_eval = evaluate_board_psqt(&board);
 
@@ -118,9 +117,11 @@ pub(crate) fn evaluate_board(board: Board) -> Eval {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
     use crate::engine::Eval;
-    use chess::{Board, Color, Piece};
+    use chess::{Board, ChessMove, Color, Piece, Square};
 
     #[test]
     fn test_default_board_material() {

@@ -20,7 +20,7 @@ pub(crate) fn find_best_move(
     t_start: &SystemTime
 ) -> Result<(Eval, ChessMove, [ChessMove; consts::DEPTH_LIM as usize]), ()> {
 
-    // First check if we're overruning the time limit (provided of depth isnt so large)
+    // Check if we're overruning the time limit (provided of depth isnt so large)
     if depth <= consts::MAX_DEPTH_TO_CHECK_TIME && t_start.elapsed().unwrap() > consts::TIME_LIM {
         println!("Cancelling search");
         return Err(()) // Throw an error to abort this depth
@@ -41,11 +41,11 @@ pub(crate) fn find_best_move(
             proposed_line,
         ));
 
-        // return (
-        //     evaluate_board(board),
+        // return Ok((
+        //     crate::evaluation::evaluate_board(board),
         //     Default::default(),
         //     proposed_line,
-        // );
+        // ));
     }
 
     // Generate moves
@@ -57,7 +57,7 @@ pub(crate) fn find_best_move(
         stats_data.all_nodes += num_moves as i32
     }
 
-    let mut sorted_moves = ordering::order_moves(child_moves, board, cache, false, depth_lim); // sort all the moves
+    let mut sorted_moves = ordering::order_moves(child_moves, board, cache, false, false, depth, depth_lim); // sort all the moves
 
     // Initialize with least desirable evaluation
     let mut max_val = match color_i {
