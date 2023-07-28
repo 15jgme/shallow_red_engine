@@ -26,16 +26,21 @@ This repo houses the core Shallow Red chess engine. Operation of this engine is 
   // Calling the enging can be done in only a few lines
 
   use chess::{Board, ChessMove};
-  use shallow_red_engine::enter_engine
+  use shallow_red_engine::{enter_engine, EngineReturn}
 
   // board with initial position
   let board = Board::default();
 
   // run the engine using board (in this case white will move)
-  let engine_move: ChessMove = enter_engine(board).await;
+  let (engine_move: ChessMove, _) = enter_engine(board).await;
 
   // Print out the move we found
   println!("The best move for white suggested by the engine is: {}", engine_move.to_string());
+
+  // If you want to see more details about the engine, a second return of type EngineReturn is provided
+  let (engine_move: ChessMove, engine_data: Option<EngineReturn>) = enter_engine(board).await;
+  println!("The engine returned the following data: \n {:#?}", engine_data.unwrap())
+
 ```
 
 ## Playing the engine
