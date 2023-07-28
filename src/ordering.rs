@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 use chess::{Board, ChessMove, MoveGen, Piece, EMPTY};
 use crate::engine::{CacheData, HashtableResultType, Eval};
 use crate::consts::USE_CACHE;
-use crate::search;
 
 fn get_piece_weight(piece: Piece) -> i16 {
     // Return the estimated value of a piece

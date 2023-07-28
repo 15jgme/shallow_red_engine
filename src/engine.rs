@@ -7,12 +7,19 @@ use crate::consts;
 use crate::evaluation::evaluate_board;
 use crate::search::find_best_move;
 
-pub(crate) struct Statistics {
-    pub(crate) all_nodes: i32,
-    pub(crate) searched_nodes: i32,
-    pub(crate) caches_used: i32,
-    pub(crate) time_ms: f32,
-    pub(crate) depth_reached: u8,
+#[derive(serde::Serialize, serde::Deserialize, Debug, Default)]
+pub struct Statistics {
+    pub all_nodes: i32,
+    pub searched_nodes: i32,
+    pub caches_used: i32,
+    pub time_ms: f32,
+    pub depth_reached: u8,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct EngineReturn {
+    pub engine_move: String,
+    pub engine_stats: Option<Statistics>,
 }
 
 pub(crate) fn max<T: PartialOrd>(a: T, b: T) -> T {
@@ -87,7 +94,7 @@ pub(crate) fn flip_colour(color: Color) -> Color {
     }
 }
 
-pub async fn enter_engine(board: Board) -> ChessMove {
+pub async fn enter_engine(board: Board) -> (ChessMove, Option<EngineReturn>) {
     println!("=============================================");
     println!("Balance of board {}", evaluate_board(board).score);
 
@@ -141,7 +148,10 @@ pub async fn enter_engine(board: Board) -> ChessMove {
         );
 
         match search_result {
-            Ok(result) => (best_score, best_mve, best_line) = result,
+            Ok(result) => {
+                (best_score, best_mve, best_line) = result;
+                run_stats.depth_reached += 1;
+            }
             Err(_) => println!("Depth aborted"),
         }
 
@@ -190,7 +200,15 @@ pub async fn enter_engine(board: Board) -> ChessMove {
         )
     }
 
-    return best_mve;
+    // Package up return data
+    // TODO: make this cleaner so there is a single move return
+    return (
+        best_mve,
+        Some(EngineReturn {
+            engine_move: best_mve.to_string(),
+            engine_stats: Some(run_stats),
+        }),
+    );
 }
 
 #[cfg(test)]
@@ -198,13 +216,12 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use crate::engine::Eval;
-    use chess::{Board, Color, Piece, Square};
+    use chess::{Board, Square};
 
     #[tokio::test]
     async fn test_integrated_engine() {
         let board: Board = Board::default(); // Initial board
-        let eng_move = enter_engine(board).await;
+        let (eng_move, _) = enter_engine(board).await;
         assert!(board.legal(eng_move)); // Make sure the engine move is legal
     }
 
@@ -224,7 +241,7 @@ mod tests {
         let board: Board =
             Board::from_str("r4rk1/pq3ppp/2p5/2PpP3/2pP4/P1P3R1/4QPPP/R5K1 b - - 0 1").unwrap();
 
-        let eng_move = enter_engine(board).await;
+        let (eng_move, _) = enter_engine(board).await;
 
         assert_ne!(eng_move, ChessMove::new(Square::E2, Square::B2, None))
     }
