@@ -10,3 +10,4 @@ pub(crate) const TIME_LIM: Duration = Duration::new(5, 0);
 pub(crate) static DEBUG_MODE: bool = false;
 pub(crate) static SEARCH_INFO: bool = true;
 pub(crate) const MAX_DEPTH_TO_CHECK_TIME: i16 = 1;
+pub(crate) const USE_CACHE: bool = true; // Flag to enable/diable move caching

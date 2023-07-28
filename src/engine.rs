@@ -1,17 +1,10 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
-
-use chess::{BitBoard, Board, BoardStatus, CacheTable, ChessMove, Color, MoveGen, Piece, EMPTY};
+use chess::{Board, CacheTable, ChessMove, Color};
 use std::ops::Add;
 use std::ops::AddAssign;
-use std::time::Duration;
 use std::time::SystemTime;
 
 use crate::consts;
-use crate::evaluation;
 use crate::evaluation::evaluate_board;
-use crate::ordering;
-use crate::quiescent::search_captures;
 use crate::search::find_best_move;
 
 pub(crate) struct Statistics {
@@ -64,18 +57,17 @@ impl Add for Eval {
     type Output = Eval;
 
     fn add(self, rhs: Eval) -> Self::Output {
-        Eval{
-            score: self.score + rhs.score
+        Eval {
+            score: self.score + rhs.score,
         }
     }
 }
 
 impl AddAssign for Eval {
-    fn add_assign(&mut self, rhs:  Eval) {
+    fn add_assign(&mut self, rhs: Eval) {
         self.score += rhs.score
     }
 }
-
 
 pub(crate) fn abs_eval_from_color(eval_rel: i16, color: Color) -> Eval {
     // Function provides a global eval struct from a local evaluation
@@ -115,7 +107,7 @@ pub async fn enter_engine(board: Board) -> ChessMove {
 
     // Declare cache table for transpositions
     let mut cache: CacheTable<CacheData> = CacheTable::new(
-        65536,
+        67108864,
         CacheData {
             move_depth: 0,
             search_depth: 0,
@@ -199,4 +191,41 @@ pub async fn enter_engine(board: Board) -> ChessMove {
     }
 
     return best_mve;
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+    use crate::engine::Eval;
+    use chess::{Board, Color, Piece, Square};
+
+    #[tokio::test]
+    async fn test_integrated_engine() {
+        let board: Board = Board::default(); // Initial board
+        let eng_move = enter_engine(board).await;
+        assert!(board.legal(eng_move)); // Make sure the engine move is legal
+    }
+
+    #[tokio::test]
+    async fn test_board_post_engine() {
+        let board: Board = Board::default(); // Initial board
+        let board_orig = board.clone(); // Deep copy of board
+        let _eng_move = enter_engine(board).await;
+        assert_eq!(board, board_orig); // Make sure the engine move is legal
+    }
+
+    #[tokio::test]
+    async fn test_queen_blunder() {
+        // This sequence was a known queen blunder from a previous revision
+        // run an integration test to make sure we don't make it again
+
+        let board: Board =
+            Board::from_str("r4rk1/pq3ppp/2p5/2PpP3/2pP4/P1P3R1/4QPPP/R5K1 b - - 0 1").unwrap();
+
+        let eng_move = enter_engine(board).await;
+
+        assert_ne!(eng_move, ChessMove::new(Square::E2, Square::B2, None))
+    }
 }
