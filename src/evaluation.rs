@@ -117,11 +117,9 @@ pub(crate) fn evaluate_board(board: Board) -> Eval {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
     use crate::engine::Eval;
-    use chess::{Board, ChessMove, Color, Piece, Square};
+    use chess::{Board};
 
     #[test]
     fn test_default_board_material() {

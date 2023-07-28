@@ -101,7 +101,7 @@ pub(crate) fn get_psqt_score(piece: Piece, color: Color, square: Square) -> Eval
 
 #[cfg(test)]
 mod tests {
-    use chess::{Square, BoardBuilder, Color, Piece, Board};
+    use chess::{Square, Color, Piece};
 
     use super::get_psqt_score;
 
