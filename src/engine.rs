@@ -1,6 +1,7 @@
 use chess::{Board, CacheTable, ChessMove, Color};
 use std::ops::Add;
 use std::ops::AddAssign;
+use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
 
 use crate::consts;
@@ -94,16 +95,12 @@ pub(crate) fn flip_colour(color: Color) -> Color {
     }
 }
 
-pub async fn enter_engine(board: Board, verbose: Option<bool>) -> (ChessMove, Option<EngineReturn>) {
-    let should_print = match verbose {
-        Some(v) => match v {
-            true => true,
-            false => false,
-        },
-        None => false,
-    };
-
-    if should_print {
+pub async fn enter_engine(
+    board: Board,
+    stdout_log: bool,
+    stop_engine_rcv: Option<Receiver<bool>>,
+) -> (ChessMove, Option<EngineReturn>) {
+    if stdout_log {
         println!("=============================================");
         println!("Balance of board {}", evaluate_board(board).score);
     }
@@ -134,6 +131,7 @@ pub async fn enter_engine(board: Board, verbose: Option<bool>) -> (ChessMove, Op
     );
 
     let t_start = SystemTime::now(); // Initial time before running
+    let mut abort_search: bool = false; // Flag invoked by the UCI layer to abort deepening
 
     let mut terminal_depth: i16 = 1; // Starting depth
 
@@ -141,9 +139,19 @@ pub async fn enter_engine(board: Board, verbose: Option<bool>) -> (ChessMove, Op
     let mut best_mve: ChessMove = Default::default();
     let mut best_line: [ChessMove; consts::DEPTH_LIM as usize] = Default::default();
 
-    while t_start.elapsed().unwrap() < consts::TIME_LIM && terminal_depth <= consts::DEPTH_LIM {
+    while (t_start.elapsed().unwrap() < consts::TIME_LIM)
+        && (terminal_depth <= consts::DEPTH_LIM)
+        && (!abort_search)
+    {
         // Run until we hit the timelimit
-        if should_print {
+
+        // If we get a stop command from the UCI layer, bail out of deepening
+        match &stop_engine_rcv {
+            Some(rcv) => abort_search = rcv.try_recv().unwrap_or(false),
+            None => {},
+        }
+
+        if stdout_log {
             println!("Current depth {}", terminal_depth);
         }
 
@@ -164,29 +172,32 @@ pub async fn enter_engine(board: Board, verbose: Option<bool>) -> (ChessMove, Op
                 (best_score, best_mve, best_line) = result;
                 run_stats.depth_reached += 1;
             }
-            Err(_) => {if should_print {println!("Depth aborted")}},
+            Err(_) => {
+                if stdout_log {
+                    println!("Depth aborted")
+                }
+            }
         }
 
         // Go farther each iteration
         terminal_depth += 1;
 
-        if should_print {
+        if stdout_log {
             println!(
                 "Best move: {}, board score of best move (global): {}",
                 best_mve, best_score.score
             );
         }
-
     }
 
-    if should_print {
+    if stdout_log {
         println!(
             "Best move: {}, board score of best move: {}",
             best_mve, best_score.score
         );
     }
 
-    if should_print {
+    if stdout_log {
         println!("Proposed line:");
         let mut i: i8 = 1;
         let mut is_white = color_i == Color::White;
@@ -196,7 +207,7 @@ pub async fn enter_engine(board: Board, verbose: Option<bool>) -> (ChessMove, Op
             } else {
                 println!("Black, Move {}: {}", i, mve);
             }
-    
+
             is_white = !is_white;
             i += 1;
         }
@@ -212,7 +223,7 @@ pub async fn enter_engine(board: Board, verbose: Option<bool>) -> (ChessMove, Op
         Err(_) => {}
     }
 
-    if consts::SEARCH_INFO && should_print{
+    if consts::SEARCH_INFO && stdout_log {
         println!(
             "Search stats. \n All nodes in problem: {}\n Nodes visited {}, reduction {}%, times used cache {}, time elapsed (ms) {}",
             run_stats.all_nodes, run_stats.searched_nodes, percent_reduction, run_stats.caches_used, run_stats.time_ms,
@@ -221,18 +232,18 @@ pub async fn enter_engine(board: Board, verbose: Option<bool>) -> (ChessMove, Op
 
     // Package up return data
     // TODO: make this cleaner so there is a single move return
-    return (
+    (
         best_mve,
         Some(EngineReturn {
             engine_move: best_mve.to_string(),
             engine_stats: Some(run_stats),
         }),
-    );
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use std::{str::FromStr, sync::mpsc, sync::mpsc::Receiver, sync::mpsc::Sender};
 
     use super::*;
     use chess::{Board, Square};
@@ -240,7 +251,15 @@ mod tests {
     #[tokio::test]
     async fn test_integrated_engine() {
         let board: Board = Board::default(); // Initial board
-        let (eng_move, _) = enter_engine(board, Some(false)).await;
+        let (eng_move, _) = enter_engine(board, false, None).await;
+        assert!(board.legal(eng_move)); // Make sure the engine move is legal
+    }
+
+    #[tokio::test]
+    async fn test_stop_channel() {
+        let board: Board = Board::default(); // Initial board
+        let (_tx, rx): (Sender<bool>, Receiver<bool>) = mpsc::channel(); // Stop channel
+        let (eng_move, _) = enter_engine(board, false, Some(rx)).await;
         assert!(board.legal(eng_move)); // Make sure the engine move is legal
     }
 
@@ -248,7 +267,7 @@ mod tests {
     async fn test_board_post_engine() {
         let board: Board = Board::default(); // Initial board
         let board_orig = board.clone(); // Deep copy of board
-        let _eng_move = enter_engine(board, Some(false)).await;
+        let _eng_move = enter_engine(board, false, None).await;
         assert_eq!(board, board_orig); // Make sure the engine move is legal
     }
 
@@ -259,8 +278,7 @@ mod tests {
 
         let board: Board =
             Board::from_str("r4rk1/pq3ppp/2p5/2PpP3/2pP4/P1P3R1/4QPPP/R5K1 b - - 0 1").unwrap();
-
-        let (eng_move, _) = enter_engine(board, Some(false)).await;
+        let (eng_move, _) = enter_engine(board, false, None).await;
 
         assert_ne!(eng_move, ChessMove::new(Square::E2, Square::B2, None))
     }
