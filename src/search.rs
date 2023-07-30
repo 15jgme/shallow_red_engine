@@ -22,7 +22,6 @@ pub(crate) fn find_best_move(
 
     // Check if we're overruning the time limit (provided of depth isnt so large)
     if depth <= consts::MAX_DEPTH_TO_CHECK_TIME && t_start.elapsed().unwrap() > consts::TIME_LIM {
-        println!("Cancelling search");
         return Err(()) // Throw an error to abort this depth
     }
 
