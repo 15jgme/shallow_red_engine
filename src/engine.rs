@@ -186,18 +186,20 @@ pub async fn enter_engine(board: Board, verbose: Option<bool>) -> (ChessMove, Op
         );
     }
 
-    println!("Proposed line:");
-    let mut i: i8 = 1;
-    let mut is_white = color_i == Color::White;
-    for mve in best_line {
-        if is_white {
-            println!("White, Move {}: {}", i, mve);
-        } else {
-            println!("Black, Move {}: {}", i, mve);
+    if should_print {
+        println!("Proposed line:");
+        let mut i: i8 = 1;
+        let mut is_white = color_i == Color::White;
+        for mve in best_line {
+            if is_white {
+                println!("White, Move {}: {}", i, mve);
+            } else {
+                println!("Black, Move {}: {}", i, mve);
+            }
+    
+            is_white = !is_white;
+            i += 1;
         }
-
-        is_white = !is_white;
-        i += 1;
     }
 
     let percent_reduction: f32 =
