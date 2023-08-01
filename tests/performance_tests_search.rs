@@ -4,7 +4,7 @@ mod tests {
 
     use std::{str::FromStr, time::SystemTime};
 
-    use chess::{Board, CacheTable, ChessMove, Color, Square};
+    use chess::{Board, CacheTable, ChessMove, Square};
 
     use shallow_red_engine::utils::{CacheData, Eval, HashtableResultType, Statistics};
     use shallow_red_engine::search::find_best_move;
