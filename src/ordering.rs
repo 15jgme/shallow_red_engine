@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use chess::{Board, ChessMove, MoveGen, Piece, EMPTY};
-use crate::engine::{CacheData, HashtableResultType, Eval};
+use crate::utils::{CacheData, HashtableResultType, Eval};
 use crate::consts::USE_CACHE;
 
 fn get_piece_weight(piece: Piece) -> i16 {

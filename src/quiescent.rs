@@ -1,6 +1,6 @@
 use chess::{Board, Color, CacheTable, MoveGen};
 
-use crate::{engine::{CacheData, Eval, abs_eval_from_color, max, flip_colour}, evaluation::evaluate_board, ordering, consts::QUIESENT_LIM};
+use crate::{utils::{CacheData, Eval, abs_eval_from_color, max, flip_colour}, evaluation::evaluate_board, ordering, consts::QUIESENT_LIM};
 
 
 
