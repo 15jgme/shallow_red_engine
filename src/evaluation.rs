@@ -1,6 +1,8 @@
-use crate::engine::Eval;
+use crate::utils::{abs_eval_from_color, max};
+use crate::gamestate;
+use crate::{utils::Eval, gamestate::GameState};
 use crate::psqt::get_psqt_score;
-use chess::{Board, BoardStatus, Color, Piece};
+use chess::{Board, BoardStatus, Color, Piece, Square};
 
 fn evaluate_board_material(board: &Board) -> Eval {
     // List of values
@@ -15,7 +17,6 @@ fn evaluate_board_material(board: &Board) -> Eval {
     let mut score: i16 = 0;
 
     // Material
-
     let black_pawns =
         (board.pieces(Piece::Pawn) & board.color_combined(Color::Black)).popcnt() as i16;
     let white_pawns =
@@ -53,10 +54,10 @@ fn evaluate_board_material(board: &Board) -> Eval {
     score += (white_queen - black_queen) * v_queen;
     score += (white_king - black_king) * v_king; // Temporary
 
-    return Eval { score: score };
+    Eval { score }
 }
 
-fn evaluate_board_psqt(board: &Board) -> Eval {
+fn evaluate_board_psqt(board: &Board, gamestate: GameState) -> Eval {
     // Piece-square table
 
     let mut psqt_eval: Eval = Eval { score: 0 };
@@ -65,8 +66,10 @@ fn evaluate_board_psqt(board: &Board) -> Eval {
     for sq in *board.color_combined(Color::White) {
         // We should expect to find a piece but just to confirm
         match board.piece_on(sq) {
-            Some(piece_on_sq) => psqt_eval += get_psqt_score(piece_on_sq, Color::White, sq),
-            None => println!("No piece found when expected"),
+            Some(piece_on_sq) => {
+                psqt_eval += get_psqt_score(piece_on_sq, Color::White, sq, gamestate)
+            },
+            None => {println!("No piece found when expected, white. Square {}", sq.to_string())},
         }
     }
 
@@ -74,43 +77,59 @@ fn evaluate_board_psqt(board: &Board) -> Eval {
     for sq in *board.color_combined(Color::Black) {
         // We should expect to find a piece but just to confirm
         match board.piece_on(sq) {
-            Some(piece_on_sq) => psqt_eval += get_psqt_score(piece_on_sq, Color::Black, sq),
-            None => println!("No piece found when expected"),
+            Some(piece_on_sq) => {
+                psqt_eval += get_psqt_score(piece_on_sq, Color::Black, sq, gamestate)
+            },
+            None => {println!("No piece found when expected, black. Square {}", sq.to_string())},
         }
     }
 
-    return psqt_eval;
+    psqt_eval
+}
+
+fn chebyshev_dist(sq_1: Square, sq_2: Square) -> i16 {
+    let rank_diff = Square::get_rank(&sq_1).to_index() as i16 - Square::get_rank(&sq_2).to_index() as i16;
+    let file_diff = Square::get_file(&sq_1).to_index() as i16 - Square::get_file(&sq_2).to_index() as i16;
+    max(rank_diff.abs(), file_diff.abs())
+}
+
+fn endgame_king_heuristics(board: &Board, gamestate: GameState) -> Eval {
+    match gamestate {
+        GameState::Opening => Eval { score: 0 },
+        GameState::Middle => Eval { score: 0 },
+        GameState::End => {    // Get squares of both kings
+            let king_sq_w = board.king_square(Color::White);
+            let king_sq_b = board.king_square(Color::Black);
+        
+            let dist = chebyshev_dist(king_sq_w, king_sq_b);
+        
+            let dist_weight = -3; // Want to be as close as possible to enemy king to cut it off
+            let score = dist * dist_weight;
+            abs_eval_from_color(score, board.side_to_move())},
+    }
 }
 
 pub(crate) fn evaluate_board(board: Board) -> Eval {
     // Returns the current score on the board where white winning is positive and black winning is negative
+
+    let current_gamestate: GameState = gamestate::gamestate(&board); // Get the current gamestate
 
     match board.status() {
         BoardStatus::Checkmate => {
             // We are always in checkmate with the current side to move
             // Since checkmate ends the game, we only need to asses it once
             // Since we assess after a move, it is safe to check at the child node level
-            match board.side_to_move() {
-                Color::White => {
-                    return Eval {
-                        score: i16::min_value() + 1,
-                    }
-                }
-                Color::Black => {
-                    return Eval {
-                        score: i16::max_value() - 1,
-                    }
-                }
-            }
+            abs_eval_from_color(i16::MIN + 1, board.side_to_move())
         }
         BoardStatus::Stalemate => {
-            return Eval { score: 0 }; // Stalemate is a draw game
+            Eval { score: 0 } // Stalemate is a draw game
         }
         BoardStatus::Ongoing => {
             let material_eval = evaluate_board_material(&board);
-            let psqt_eval = evaluate_board_psqt(&board);
+            let psqt_eval = evaluate_board_psqt(&board, current_gamestate);
+            let king_eg_eval = endgame_king_heuristics(&board, current_gamestate);
 
-            return material_eval + psqt_eval;
+            material_eval + psqt_eval + king_eg_eval
         }
     }
 }
@@ -118,8 +137,8 @@ pub(crate) fn evaluate_board(board: Board) -> Eval {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::Eval;
-    use chess::{Board};
+    use crate::utils::Eval;
+    use chess::Board;
 
     #[test]
     fn test_default_board_material() {
@@ -130,12 +149,19 @@ mod tests {
     #[test]
     fn test_default_board_psqt() {
         let initial_board = Board::default();
-        assert_eq!(evaluate_board_psqt(&initial_board), Eval { score: 0 })
+        assert_eq!(evaluate_board_psqt(&initial_board, GameState::Middle), Eval { score: 0 })
     }
 
     #[test]
     fn test_default_board() {
         let initial_board = Board::default();
         assert_eq!(evaluate_board(initial_board), Eval { score: 0 })
+    }
+
+    #[test]
+    fn test_chebyshev_dist(){
+        assert_eq!(chebyshev_dist(Square::F6, Square::F5), 1);
+        assert_eq!(chebyshev_dist(Square::F6, Square::B1), 5);
+        assert_eq!(chebyshev_dist(Square::F6, Square::C7), 3);
     }
 }

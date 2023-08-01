@@ -1,28 +1,30 @@
 use std::time::SystemTime;
 
-use chess::{Board, Color, CacheTable, MoveGen, ChessMove, BoardStatus};
 use crate::consts;
-use crate::engine::HashtableResultType;
 use crate::quiescent::search_captures;
-use crate::{engine::{CacheData, Eval, max, flip_colour, Statistics}, ordering};
+use crate::{
+    utils::{flip_colour, max, CacheData, Eval, Statistics, HashtableResultType},
+    ordering,
+};
+use chess::{Board, BoardStatus, CacheTable, ChessMove, Color, MoveGen};
 
-
-
-pub(crate) fn find_best_move(
+pub fn find_best_move(
     board: Board,
     depth: i16,
     depth_lim: i16,
-    mut alpha: i16,
+    alpha: i16,
     beta: i16,
     color_i: Color,
     stats_data: &mut Statistics,
     cache: &mut CacheTable<CacheData>,
-    t_start: &SystemTime
+    t_start: &SystemTime,
+    first_search_move: Option<ChessMove>,
 ) -> Result<(Eval, ChessMove, [ChessMove; consts::DEPTH_LIM as usize]), ()> {
+    let mut alpha_node = alpha;
 
     // Check if we're overruning the time limit (provided of depth isnt so large)
     if depth <= consts::MAX_DEPTH_TO_CHECK_TIME && t_start.elapsed().unwrap() > consts::TIME_LIM {
-        return Err(()) // Throw an error to abort this depth
+        return Err(()); // Throw an error to abort this depth
     }
 
     if (depth >= depth_lim)
@@ -35,7 +37,7 @@ pub(crate) fn find_best_move(
 
         // Note, issues with pruning, does weird things
         return Ok((
-            search_captures(&board, alpha, beta, 0, color_i, cache, depth_lim),
+            search_captures(&board, alpha_node, beta, 0, color_i, cache, depth_lim),
             Default::default(),
             proposed_line,
         ));
@@ -56,7 +58,8 @@ pub(crate) fn find_best_move(
         stats_data.all_nodes += num_moves as i32
     }
 
-    let mut sorted_moves = ordering::order_moves(child_moves, board, cache, false, false, depth, depth_lim); // sort all the moves
+    let mut sorted_moves =
+        ordering::order_moves(child_moves, board, cache, false, false, depth, depth_lim); // sort all the moves
 
     // Initialize with least desirable evaluation
     let mut max_val = match color_i {
@@ -64,8 +67,39 @@ pub(crate) fn find_best_move(
         Color::Black => crate::consts::UNDESIRABLE_EVAL_BLACK,
     };
 
-    let mut max_move = sorted_moves[0].chessmove.clone();
-    let mut max_line: [ChessMove; consts::DEPTH_LIM as usize] = [max_move; consts::DEPTH_LIM as usize];
+    let mut max_move = sorted_moves[0].chessmove;
+    let mut max_line: [ChessMove; consts::DEPTH_LIM as usize] =
+        [max_move; consts::DEPTH_LIM as usize];
+
+    // If we get in a move that we must make first, do that before going through the other moves
+    if let Some(mve) = first_search_move {
+        // Set the PV move to our best move
+        max_move = mve;
+        // Run a search to the current depth on the PV move
+        (max_val, _, max_line) = find_best_move(
+            board.make_move_new(mve),
+            depth + 1,
+            depth_lim,
+            -beta,
+            -alpha_node,
+            flip_colour(color_i),
+            stats_data,
+            cache,
+            t_start,
+            None,
+        )?;
+        // Overwrite the PV move in hash so that we don't need to evaluate it twice
+        // (The search routine should catch the fact that we have it already in the cache)
+        cache.add(
+            board.make_move_new(max_move).get_hash(),
+            CacheData {
+                move_depth: depth,
+                search_depth: depth_lim,
+                evaluation: max_val,
+                move_type: HashtableResultType::PVMove,
+            },
+        );
+    }
 
     for weighted_move in &mut sorted_moves {
         let mve = weighted_move.chessmove;
@@ -81,17 +115,41 @@ pub(crate) fn find_best_move(
                 stats_data.caches_used += 1;
             }
             None => {
-                (node_evaluation, _best_move, proposed_line) = find_best_move(
-                    board.make_move_new(mve),
-                    depth + 1,
-                    depth_lim,
-                    -beta,
-                    -alpha,
-                    flip_colour(color_i),
-                    stats_data,
-                    cache,
-                    t_start
-                )?;
+                if depth > 0 {
+                    (node_evaluation, _best_move, proposed_line) = find_best_move(
+                        board.make_move_new(mve),
+                        depth + 1,
+                        depth_lim,
+                        -beta,
+                        -alpha_node,
+                        flip_colour(color_i),
+                        stats_data,
+                        cache,
+                        t_start,
+                        None,
+                    )?;
+                } else {
+                    // We are at the root node, what we don't want to do here is return an error.
+                    // This would eliminate any benefit we get from the deepening
+                    // Instead, break out of the loop and return the best value we have
+                    let search_result = find_best_move(
+                        board.make_move_new(mve),
+                        depth + 1,
+                        depth_lim,
+                        -beta,
+                        -alpha_node,
+                        flip_colour(color_i),
+                        stats_data,
+                        cache,
+                        t_start,
+                        None,
+                    );
+
+                    match search_result {
+                        Ok(result) => (node_evaluation, _best_move, proposed_line) = result,
+                        Err(_) => break,
+                    }
+                }
 
                 // Add move to hash
                 cache.add(
@@ -123,9 +181,9 @@ pub(crate) fn find_best_move(
             println!("Move under consideration {}, number of possible moves {}, evaluation (for colour) {}, depth {}, colour {:#?}", mve, num_moves, node_evaluation.for_colour(color_i), depth, color_i)
         }
 
-        alpha = max(alpha, node_evaluation.for_colour(board.side_to_move()));
+        alpha_node = max(alpha_node, node_evaluation.for_colour(board.side_to_move()));
 
-        if alpha >= beta {
+        if alpha_node >= beta {
             // Alpha beta cutoff here
 
             // Record in cache that this is a cutoff move
@@ -154,5 +212,62 @@ pub(crate) fn find_best_move(
         },
     );
 
-    return Ok((max_val, max_move, max_line));
+    Ok((max_val, max_move, max_line))
+}
+
+#[cfg(test)]
+mod tests {
+    // use::super*;
+
+    use std::{str::FromStr, time::SystemTime};
+
+    use chess::{Board, CacheTable, ChessMove, Color, Square};
+
+    use crate::utils::{CacheData, Eval, HashtableResultType, Statistics};
+
+    use super::find_best_move;
+
+    #[test]
+    fn test_bug() {
+        let fen = "r1k2b1r/ppp1nNpp/2p5/4P3/5Bb1/2N5/PPP2P1P/R4RK1 b - - 0 1";
+        let board = Board::from_str(fen).expect("board should be valid");
+        let mve = ChessMove::new(Square::H8, Square::G8, None);
+
+        let mut run_stats = Statistics {
+            all_nodes: 0,
+            searched_nodes: 0,
+            caches_used: 0,
+            time_ms: 0.0,
+            depth_reached: 1,
+        };
+
+        // Declare cache table for transpositions
+        let mut cache: CacheTable<CacheData> = CacheTable::new(
+            67108864,
+            CacheData {
+                move_depth: 0,
+                search_depth: 0,
+                evaluation: Eval { score: 0 },
+                move_type: HashtableResultType::RegularMove,
+            },
+        );
+
+        let t_start = SystemTime::now(); // Initial time before running
+
+        let search_res = find_best_move(
+            board,
+            0,
+            3,
+            i16::MAX - 1,
+            i16::MIN + 1,
+            board.side_to_move(),
+            &mut run_stats,
+            &mut cache,
+            &t_start,
+            Some(mve),
+        )
+        .unwrap();
+        println!("{:#?}", search_res.1.to_string());
+        assert_ne!(search_res.1, ChessMove::new(Square::C3, Square::E4, None))
+    }
 }
