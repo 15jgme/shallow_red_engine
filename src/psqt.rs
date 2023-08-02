@@ -2,7 +2,7 @@
 
 use chess::{Color, Piece, Square};
 
-use crate::utils::{Eval, abs_eval_from_color};
+use crate::utils::common::{Eval, abs_eval_from_color};
 use crate::gamestate::GameState;
 
 const BOARD_LEN: usize = 64;

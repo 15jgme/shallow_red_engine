@@ -7,3 +7,4 @@ pub mod search; // Make search public for performance testing
 pub(crate) mod psqt;
 pub(crate) mod gamestate;
 pub mod utils;
+pub mod managers;

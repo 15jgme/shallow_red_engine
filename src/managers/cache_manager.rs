@@ -1,26 +1,45 @@
-use std::sync::mpsc::{channel, self};
-// use std::sync::mpsc::SyncSender::{Receiver, Sender};
-use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
+use std::sync::{
+    mpsc::{self, Receiver, Sender},
+    Arc, RwLock,
+};
 
 use chess::{Board, CacheTable};
 
-use crate::utils::Eval;
+use crate::utils::common::Eval;
 
 pub struct Cache {
     pub cache: CacheTable<CacheData>,
-    pub channel_tx: SyncSender<CacheEntry>,
-    channel_rx: Receiver<CacheEntry>,
 }
 
 impl Cache {
+    // // This function should run in a seperate thread and constantly check for new data to load into the cache
+    // pub fn cache_manager_server(mut self, channel_rx: Receiver<CacheEntry>) {
+    //     loop {
+    //         let cache_rx = channel_rx.recv();
+    //         match cache_rx {
+    //             Ok(new_cache_entry) => self
+    //                 .cache
+    //                 .add(new_cache_entry.board.get_hash(), new_cache_entry.cachedata),
+    //             Err(_) => {
+    //                 println!("Exiting cache server");
+    //                 break;
+    //             } // No senders left break
+    //         }
+    //     }
+    // }
     // This function should run in a seperate thread and constantly check for new data to load into the cache
-    pub fn cache_manager_server(&mut self) {
+    pub fn cache_manager_server(arc_cache: Arc<RwLock<Cache>>, channel_rx: Receiver<CacheEntry>) {
+        let binding = arc_cache.clone();
         loop {
-            let cache_rx = self.channel_rx.recv();
+            let cache_rx = channel_rx.recv();
             match cache_rx {
-                Ok(new_cache_entry) => self
-                    .cache
-                    .add(new_cache_entry.board.get_hash(), new_cache_entry.cachedata),
+                Ok(new_cache_entry) => {
+                    // println!("Message received: {:#?}", new_cache_entry);
+                    let mut cache = binding.write().unwrap();
+                    cache
+                        .cache
+                        .add(new_cache_entry.board.get_hash(), new_cache_entry.cachedata)
+                }
                 Err(_) => {
                     println!("Exiting cache server");
                     break;
@@ -29,16 +48,19 @@ impl Cache {
         }
     }
 
-    pub fn cache_manager_get(&self, board_hash: u64) -> Option<CacheData>{
+    pub fn cache_manager_get(&self, board_hash: u64) -> Option<CacheData> {
         self.cache.get(board_hash)
+    }
+
+    pub fn generate_channel() -> (Sender<CacheEntry>, Receiver<CacheEntry>) {
+        let (tx, rx): (Sender<CacheEntry>, Receiver<CacheEntry>) = mpsc::channel();
+        (tx, rx)
     }
 }
 
 impl Default for Cache {
     fn default() -> Self {
-        // Set the buffer for 2000 messages, (hopefully we can handle that...)
-        let (tx, rx): (SyncSender<CacheEntry>, Receiver<CacheEntry>) = sync_channel(2000);
-        Cache {
+        Self {
             cache: CacheTable::new(
                 67108864,
                 CacheData {
@@ -48,8 +70,6 @@ impl Default for Cache {
                     move_type: HashtableResultType::RegularMove,
                 },
             ),
-            channel_tx: tx,
-            channel_rx: rx,
         }
     }
 }
@@ -76,26 +96,37 @@ pub struct CacheEntry {
     pub cachedata: CacheData,
 }
 
+// Groups together the Cache pointer and the transmitter so that a section of the code
+// Can interact with the cache
+#[derive(Clone)]
+pub struct CacheInputGrouping {
+    pub cache_ref: Arc<RwLock<Cache>>,
+    pub cache_tx: Sender<CacheEntry>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::CacheEntry;
     use crate::{
         managers::cache_manager::{Cache, CacheData, HashtableResultType},
-        utils::Eval,
+        utils::common::Eval,
+    };
+    use std::thread;
+    use std::{
+        sync::{Arc, RwLock},
+        time::Duration,
     };
 
-    use std::sync::Arc;
-    use std::thread;
-
-    #[tokio::test]
-    async fn test_cache_server() {
+    #[test]
+    fn test_cache_server() {
         // Declare cache table for transpositions
+        let cache_arc = Arc::new(RwLock::new(Cache::default()));
+        let cache_arc_thread = cache_arc.clone();
 
-        let cache = Arc::new(Cache::default());
-        // let mut cache = Arc<>;
+        let (cache_tx, cache_rx) = Cache::generate_channel();
 
-        // tokio::spawn(async move {cache.cache_manager_server()});
-        thread::spawn(|| {cache.cache_manager_server()});
+        let _cache_thread_hndl =
+            thread::spawn(move || Cache::cache_manager_server(cache_arc_thread, cache_rx));
 
         let cache_data = CacheData {
             move_depth: 1,
@@ -106,15 +137,21 @@ mod tests {
 
         let cache_entry_to_send = CacheEntry {
             board: Default::default(),
-            cachedata: cache_data.clone(),
+            cachedata: cache_data,
         };
-        
-        cache.channel_tx.send(cache_entry_to_send).unwrap();
 
-        let cache_retrieve = cache.cache_manager_get(cache_entry_to_send.board.get_hash()).unwrap();
-        // let cache_retrieve = cache.cache.get(cache_entry_to_send.board.get_hash()).unwrap();
-        
-        assert_eq!(cache_retrieve, cache_data)
+        cache_tx.send(cache_entry_to_send).unwrap();
+
+        thread::sleep(Duration::from_nanos(1));
+
+        let cache_retrieve = cache_arc
+            .read()
+            .unwrap()
+            .cache_manager_get(cache_entry_to_send.board.get_hash())
+            .unwrap();
+
+        // let _ = cache_thread_hndl.join();
+        assert_eq!(cache_retrieve, cache_data);
 
         // TODO complete test
         // Send a few CacheEntries down the tx pipe

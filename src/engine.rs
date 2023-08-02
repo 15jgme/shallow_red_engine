@@ -1,14 +1,17 @@
 use chess::{Board, CacheTable, ChessMove, Color};
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, RwLock};
+use std::thread;
 use std::time::SystemTime;
 
 use crate::consts;
 use crate::evaluation::evaluate_board;
+use crate::managers::cache_manager::{Cache, CacheData, CacheInputGrouping, HashtableResultType};
+use crate::managers::stats_manager::{Statistics, StatisticsInputGrouping};
 use crate::search::find_best_move;
-use crate::utils::CacheData;
-use crate::utils::Eval;
-use crate::utils::HashtableResultType;
-use crate::utils::{EngineReturn, Statistics};
+use crate::utils::common::EngineReturn;
+use crate::utils::common::Eval;
+use crate::utils::search_interface::SearchParameters;
 
 pub async fn enter_engine(
     board: Board,
@@ -34,16 +37,19 @@ pub async fn enter_engine(
         depth_reached: 1,
     };
 
-    // Declare cache table for transpositions
-    let mut cache: CacheTable<CacheData> = CacheTable::new(
-        67108864,
-        CacheData {
-            move_depth: 0,
-            search_depth: 0,
-            evaluation: Eval { score: 0 },
-            move_type: HashtableResultType::RegularMove,
-        },
-    );
+    // Create the cache thread
+
+    let cache_arc = Arc::new(RwLock::new(Cache::default()));
+    let cache_arc_thread = cache_arc.clone();
+    let (cache_tx, cache_rx) = Cache::generate_channel();
+    let cache = CacheInputGrouping {
+        cache_ref: cache_arc,
+        cache_tx,
+    };
+
+    let _cache_thread_hndl =
+        thread::spawn(move || Cache::cache_manager_server(cache_arc_thread.clone(), cache_rx));
+    // Cache thread has been created
 
     let t_start = SystemTime::now(); // Initial time before running
     let mut abort_search: bool = false; // Flag invoked by the UCI layer to abort deepening
@@ -63,7 +69,7 @@ pub async fn enter_engine(
         // If we get a stop command from the UCI layer, bail out of deepening
         match &stop_engine_rcv {
             Some(rcv) => abort_search = rcv.try_recv().unwrap_or(false),
-            None => {},
+            None => {}
         }
 
         if stdout_log {
@@ -72,15 +78,22 @@ pub async fn enter_engine(
 
         let search_result = find_best_move(
             board.clone(),
-            0,
-            terminal_depth,
-            i16::min_value() + 1,
-            i16::max_value() - 1,
-            color_i,
+            SearchParameters {
+                depth: 0,
+                depth_lim: terminal_depth,
+                alpha: i16::min_value() + 1,
+                beta: i16::max_value() - 1,
+                color: color_i,
+                stats: StatisticsInputGrouping{},
+                cache: cache.clone(),
+                t_start: &t_start,
+                first_search_move: if best_mve != Default::default() {
+                    Some(best_mve)
+                } else {
+                    None
+                },
+            },
             &mut run_stats,
-            &mut cache,
-            &t_start,
-            if best_mve != Default::default() {Some(best_mve)} else {None},
         );
 
         match search_result {
@@ -134,7 +147,9 @@ pub async fn enter_engine(
 
     // get final time
     let end_time = SystemTime::now();
-    if let Ok(duration) = end_time.duration_since(start_time) { run_stats.time_ms = duration.as_millis() as f32 }
+    if let Ok(duration) = end_time.duration_since(start_time) {
+        run_stats.time_ms = duration.as_millis() as f32
+    }
 
     if consts::SEARCH_INFO && stdout_log {
         println!(

@@ -6,3 +6,7 @@ pub struct Statistics {
     pub time_ms: f32,
     pub depth_reached: u8,
 }
+
+pub struct StatisticsInputGrouping{
+    
+}

@@ -1,15 +1,6 @@
 use std::ops::{AddAssign, Add};
-
 use chess::Color;
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Default)]
-pub struct Statistics {
-    pub all_nodes: i32,
-    pub searched_nodes: i32,
-    pub caches_used: i32,
-    pub time_ms: f32,
-    pub depth_reached: u8,
-}
+use crate::managers::stats_manager::Statistics;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct EngineReturn {
@@ -23,21 +14,6 @@ pub(crate) fn max<T: PartialOrd>(a: T, b: T) -> T {
     } else {
         b
     }
-}
-
-#[derive(Clone, Copy, PartialEq, PartialOrd)]
-pub struct CacheData {
-    pub move_depth: i16,
-    pub search_depth: i16,
-    pub evaluation: Eval,
-    pub move_type: HashtableResultType, // What type of move we have
-}
-
-#[derive(Clone, Copy, PartialEq, PartialOrd)]
-pub enum HashtableResultType {
-    RegularMove,
-    PVMove,
-    CutoffMove,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq)]

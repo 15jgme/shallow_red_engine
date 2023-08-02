@@ -1,6 +1,6 @@
-use crate::utils::{abs_eval_from_color, max};
+use crate::utils::common::{abs_eval_from_color, max};
 use crate::gamestate;
-use crate::{utils::Eval, gamestate::GameState};
+use crate::{utils::common::Eval, gamestate::GameState};
 use crate::psqt::get_psqt_score;
 use chess::{Board, BoardStatus, Color, Piece, Square};
 
@@ -137,7 +137,7 @@ pub(crate) fn evaluate_board(board: Board) -> Eval {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::Eval;
+    use crate::utils::common::Eval;
     use chess::Board;
 
     #[test]
