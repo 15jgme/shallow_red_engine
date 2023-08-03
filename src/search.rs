@@ -275,7 +275,7 @@ mod tests {
 
         let _board_b = board.make_move_new(mve);
 
-        let mut run_stats = Statistics {
+        let _run_stats = Statistics {
             all_nodes: 0,
             searched_nodes: 0,
             caches_used: 0,

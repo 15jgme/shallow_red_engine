@@ -1,7 +1,7 @@
 use std::{str::FromStr, sync::{Arc, RwLock}, thread};
 
 use chess::Board;
-use shallow_red_engine::{engine::enter_engine, utils::engine_interface::EngineSettings, managers::cache_manager::{Cache, CacheData, CacheInputGrouping}};
+use shallow_red_engine::{engine::enter_engine, utils::engine_interface::EngineSettings, managers::cache_manager::{Cache, CacheInputGrouping}};
 
 #[tokio::test]
 async fn test_integrated_initial() {

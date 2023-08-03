@@ -1,7 +1,7 @@
-use chess::{Board, Color, CacheTable, MoveGen};
+use chess::{Board, Color, MoveGen};
 
 use crate::{utils::common::{Eval, abs_eval_from_color, max, flip_colour}, evaluation::evaluate_board, ordering, consts::QUIESENT_LIM, managers::cache_manager::CacheInputGrouping};
-use crate::managers::cache_manager::CacheData;
+
 
 
 
@@ -24,7 +24,7 @@ pub(crate) fn quiescent_search(
 
     alpha = max(alpha, stand_pat.for_colour(color_i));
 
-    let capture_moves = MoveGen::new_legal(&board);
+    let capture_moves = MoveGen::new_legal(board);
     let sorted_moves = ordering::order_moves(capture_moves, *board, cache.clone(), true, true, depth, depth_lim); // sort all the moves
 
     for capture_move_score in sorted_moves {
@@ -46,5 +46,5 @@ pub(crate) fn quiescent_search(
         alpha = max(alpha, score.for_colour(color_i));
     }
 
-    return abs_eval_from_color(alpha, color_i);
+    abs_eval_from_color(alpha, color_i)
 }

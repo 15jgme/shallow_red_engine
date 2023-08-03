@@ -69,7 +69,7 @@ fn evaluate_board_psqt(board: &Board, gamestate: GameState) -> Eval {
             Some(piece_on_sq) => {
                 psqt_eval += get_psqt_score(piece_on_sq, Color::White, sq, gamestate)
             },
-            None => {println!("No piece found when expected, white. Square {}", sq.to_string())},
+            None => {println!("No piece found when expected, white. Square {}", sq)},
         }
     }
 
@@ -80,7 +80,7 @@ fn evaluate_board_psqt(board: &Board, gamestate: GameState) -> Eval {
             Some(piece_on_sq) => {
                 psqt_eval += get_psqt_score(piece_on_sq, Color::Black, sq, gamestate)
             },
-            None => {println!("No piece found when expected, black. Square {}", sq.to_string())},
+            None => {println!("No piece found when expected, black. Square {}", sq)},
         }
     }
 

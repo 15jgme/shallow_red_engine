@@ -1,12 +1,12 @@
-use chess::{Board, CacheTable, ChessMove, Color};
-use std::sync::mpsc::Receiver;
+use chess::{Board, ChessMove, Color};
+
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::SystemTime;
 
 use crate::consts;
 use crate::evaluation::evaluate_board;
-use crate::managers::cache_manager::{Cache, CacheData, CacheInputGrouping, HashtableResultType};
+use crate::managers::cache_manager::{Cache, CacheInputGrouping};
 use crate::managers::stats_manager::{Statistics, StatisticsDepth};
 use crate::search::find_best_move;
 use crate::utils::common::EngineReturn;
@@ -81,7 +81,7 @@ pub async fn enter_engine(
         }
 
         let search_result = find_best_move(
-            board.clone(),
+            board,
             SearchParameters {
                 depth: 0,
                 depth_lim: terminal_depth,
@@ -194,7 +194,7 @@ mod tests {
     #[tokio::test]
     async fn test_stop_channel() {
         let board: Board = Board::default(); // Initial board
-        let (_tx, rx): (Sender<bool>, Receiver<bool>) = mpsc::channel(); // Stop channel
+        let (_tx, _rx): (Sender<bool>, Receiver<bool>) = mpsc::channel(); // Stop channel
         let (eng_move, _) = enter_engine(board, EngineSettings::default()).await;
         assert!(board.legal(eng_move)); // Make sure the engine move is legal
     }
@@ -202,7 +202,7 @@ mod tests {
     #[tokio::test]
     async fn test_board_post_engine() {
         let board: Board = Board::default(); // Initial board
-        let board_orig = board.clone(); // Deep copy of board
+        let board_orig = board; // Deep copy of board
         let _eng_move = enter_engine(board, EngineSettings::default()).await;
         assert_eq!(board, board_orig); // Make sure the engine move is legal
     }
