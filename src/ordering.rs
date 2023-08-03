@@ -1,8 +1,8 @@
-use std::cmp::Ordering;
-use chess::{Board, ChessMove, MoveGen, Piece, EMPTY};
-use crate::managers::cache_manager::{CacheData, HashtableResultType, CacheInputGrouping};
-use crate::utils::common::Eval;
 use crate::consts::USE_CACHE;
+use crate::managers::cache_manager::{CacheData, CacheInputGrouping, HashtableResultType};
+use crate::utils::common::Eval;
+use chess::{Board, ChessMove, MoveGen, Piece, EMPTY};
+use std::cmp::Ordering;
 
 fn get_piece_weight(piece: Piece) -> i16 {
     // Return the estimated value of a piece
@@ -79,23 +79,22 @@ pub(crate) fn order_moves(
             let captured_piece_wt = get_piece_weight(target_piece);
 
             // Get value of piece used in capture
-            
+
             let own_piece_wt: i16 = match board.piece_on(capture_move.get_source()) {
                 Some(own_piece) => get_piece_weight(own_piece), // We should expect this, our piece has to start somewhere after all
-                None => panic!("No piece on move origin"),                     // Panic for now
+                None => panic!("No piece on move origin"),      // Panic for now
             };
             // moves_captures.push(WeightedMove { chessmove: capture_move, score: 0});
 
             // Check if this move is in our cache (with a flag to disable cache lookup)
-            let cache_read = cache.cache_ref.read();
-            let cache_result: Option<CacheData> = match cache_read{
-                Ok(read_result) => match USE_CACHE && !avoid_cache {
-                    true => read_result.cache_manager_get(board.make_move_new(capture_move).get_hash()),
-                    false => None,
-                } 
-                Err(_) => None,
+            let cache_result: Option<CacheData> = match USE_CACHE && !avoid_cache {
+                true => cache
+                    .cache_ref
+                    .read()
+                    .cache_manager_get(board.make_move_new(capture_move).get_hash()),
+                false => None,
             };
-            match  cache_result {
+            match cache_result {
                 Some(cache_result) => {
                     // Move found in cache
                     // Check if we found it at the current search depth to see if evaluation is valid
@@ -165,15 +164,13 @@ pub(crate) fn order_moves(
 
         moves.set_iterator_mask(!EMPTY);
         for other_move in &mut moves {
-
             // Check if this move is in our cache (with a flag to disable cache lookup)
-            let cache_read = cache.cache_ref.read();
-            let cache_result: Option<CacheData> = match cache_read{
-                Ok(read_result) => match USE_CACHE && !avoid_cache {
-                    true => read_result.cache_manager_get(board.make_move_new(other_move).get_hash()),
-                    false => None,
-                } 
-                Err(_) => None,
+            let cache_result: Option<CacheData> = match USE_CACHE && !avoid_cache {
+                true => cache
+                    .cache_ref
+                    .read()
+                    .cache_manager_get(board.make_move_new(other_move).get_hash()),
+                false => None,
             };
             match cache_result {
                 Some(cache_result) => {

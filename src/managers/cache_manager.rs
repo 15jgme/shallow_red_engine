@@ -1,7 +1,9 @@
 use std::sync::{
-    mpsc::{self, Receiver, Sender},
-    Arc, RwLock,
+    mpsc::{self, Receiver, Sender}
 };
+
+use std::sync::{Arc, RwLock as old};
+use parking_lot::RwLock;
 
 use chess::{Board, CacheTable};
 
@@ -20,10 +22,9 @@ impl Cache {
             match cache_rx {
                 Ok(new_cache_entry) => {
                     // println!("Message received: {:#?}", new_cache_entry);
-                    let mut cache = binding.write().unwrap();
+                    let mut cache = binding.write().
                     cache
-                        .cache
-                        .add(new_cache_entry.board.get_hash(), new_cache_entry.cachedata)
+                        .add(new_cache_entry.board.get_hash(), new_cache_entry.cachedata);
                 }
                 Err(_) => {
                     println!("Exiting cache server");
@@ -98,9 +99,11 @@ mod tests {
     };
     use std::thread;
     use std::{
-        sync::{Arc, RwLock},
+        sync::{Arc, RwLock as old},
         time::Duration,
     };
+
+    use parking_lot::RwLock;
 
     #[test]
     fn test_cache_server() {
@@ -131,7 +134,6 @@ mod tests {
 
         let cache_retrieve = cache_arc
             .read()
-            .unwrap()
             .cache_manager_get(cache_entry_to_send.board.get_hash())
             .unwrap();
 

@@ -16,6 +16,7 @@ debug = false
 [dependencies]
 chess = ">0.0.1"
 itertools = "0.10.5"
+parking_lot = "0.12.1"
 serde = { version = "1.0", features = ["derive"] } # needed for the tauri frontend
 
 [dev-dependencies]

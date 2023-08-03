@@ -9,10 +9,7 @@ use crate::{
 };
 use chess::{Board, BoardStatus, ChessMove, Color, MoveGen};
 
-pub fn find_best_move(
-    board: Board,
-    params: SearchParameters,
-) -> Result<SearchOutput, ()> {
+pub fn find_best_move(board: Board, params: SearchParameters) -> Result<SearchOutput, ()> {
     let mut alpha_node = params.alpha;
 
     // Internal stats data for this node and children
@@ -98,7 +95,7 @@ pub fn find_best_move(
                 t_start: params.t_start,
                 t_lim: params.t_lim,
                 first_search_move: None,
-            }
+            },
         )?;
 
         max_val = search_output.node_eval;
@@ -125,6 +122,8 @@ pub fn find_best_move(
         let (node_evaluation, proposed_line);
         let _best_move: ChessMove;
 
+        let mut move_is_cache_move: bool = false; // Flag to check if the move is a cache move or not (avoid rewriting)
+
         match weighted_move.evaluation {
             Some(eval) => {
                 // We've found this move in the current search no need to assess
@@ -132,6 +131,7 @@ pub fn find_best_move(
                 _best_move = Default::default();
                 proposed_line = [Default::default(); consts::DEPTH_LIM as usize];
                 node_stats.caches_used += 1;
+                move_is_cache_move = true; // This is a cache move!
             }
             None => {
                 if params.depth > 0 {
@@ -147,7 +147,7 @@ pub fn find_best_move(
                             t_start: params.t_start,
                             t_lim: params.t_lim,
                             first_search_move: None,
-                        }
+                        },
                     )?;
                     node_evaluation = search_output.node_eval;
                     proposed_line = search_output.best_line;
@@ -169,7 +169,7 @@ pub fn find_best_move(
                             t_start: params.t_start,
                             t_lim: params.t_lim,
                             first_search_move: None,
-                        }
+                        },
                     );
 
                     match search_result {
@@ -183,15 +183,17 @@ pub fn find_best_move(
                 }
 
                 // Add move to hash
-                let _ = params.cache.cache_tx.send(CacheEntry {
-                    board: board.make_move_new(mve),
-                    cachedata: CacheData {
-                        move_depth: params.depth,
-                        search_depth: params.depth_lim,
-                        evaluation: node_evaluation,
-                        move_type: HashtableResultType::RegularMove,
-                    },
-                });
+                if !move_is_cache_move {
+                    let _ = params.cache.cache_tx.send(CacheEntry {
+                        board: board.make_move_new(mve),
+                        cachedata: CacheData {
+                            move_depth: params.depth,
+                            search_depth: params.depth_lim,
+                            evaluation: node_evaluation,
+                            move_type: HashtableResultType::RegularMove,
+                        },
+                    });
+                }
             }
         }
 
@@ -213,15 +215,17 @@ pub fn find_best_move(
             // Alpha beta cutoff here
 
             // Record in cache that this is a cutoff move
-            let _ = params.cache.cache_tx.send(CacheEntry {
-                board: board.make_move_new(mve),
-                cachedata: CacheData {
-                    move_depth: params.depth,
-                    search_depth: params.depth_lim,
-                    evaluation: node_evaluation,
-                    move_type: HashtableResultType::CutoffMove,
-                },
-            });
+            if !move_is_cache_move {
+                let _ = params.cache.cache_tx.send(CacheEntry {
+                    board: board.make_move_new(mve),
+                    cachedata: CacheData {
+                        move_depth: params.depth,
+                        search_depth: params.depth_lim,
+                        evaluation: node_evaluation,
+                        move_type: HashtableResultType::CutoffMove,
+                    },
+                });
+            }
             break;
         }
     }
@@ -251,9 +255,11 @@ mod tests {
 
     use std::{
         str::FromStr,
-        sync::{Arc, RwLock},
-        time::{SystemTime, Duration},
+        time::{Duration, SystemTime},
     };
+
+    use parking_lot::RwLock;
+    use std::sync::{Arc, RwLock as old};
 
     use chess::{Board, ChessMove, Square};
 
@@ -303,10 +309,13 @@ mod tests {
                 t_start: &t_start,
                 t_lim: Duration::from_secs(7),
                 first_search_move: Some(mve),
-            }
+            },
         )
         .unwrap();
         println!("{:#?}", search_res.best_move.to_string());
-        assert_ne!(search_res.best_move, ChessMove::new(Square::C3, Square::E4, None))
+        assert_ne!(
+            search_res.best_move,
+            ChessMove::new(Square::C3, Square::E4, None)
+        )
     }
 }
