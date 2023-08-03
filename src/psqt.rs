@@ -2,7 +2,7 @@
 
 use chess::{Color, Piece, Square};
 
-use crate::utils::{Eval, abs_eval_from_color};
+use crate::utils::common::{Eval, abs_eval_from_color};
 use crate::gamestate::GameState;
 
 const BOARD_LEN: usize = 64;
@@ -106,7 +106,7 @@ pub(crate) fn get_psqt_score(piece: Piece, color: Color, square: Square, gamesta
         Piece::Rook => ROOK_PSQT[probe_index],
         Piece::Queen => QUEEN_PSQT[probe_index],
         Piece::King => match gamestate {
-            GameState::Opening => KING_PSQT_MG[probe_index],
+            GameState::_Opening => KING_PSQT_MG[probe_index],
             GameState::Middle => KING_PSQT_MG[probe_index],
             GameState::End => KING_PSQT_EG[probe_index],
         } ,

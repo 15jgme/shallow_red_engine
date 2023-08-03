@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use chess::{Board, ChessMove, MoveGen, Piece, EMPTY};
-use crate::utils::{CacheData, HashtableResultType, Eval};
+use crate::managers::cache_manager::{CacheData, HashtableResultType, CacheInputGrouping};
+use crate::utils::common::Eval;
 use crate::consts::USE_CACHE;
 
 fn get_piece_weight(piece: Piece) -> i16 {
@@ -43,7 +44,7 @@ impl PartialEq for WeightedMove {
 pub(crate) fn order_moves(
     mut moves: MoveGen,
     board: Board,
-    cache: &mut chess::CacheTable<CacheData>,
+    cache: CacheInputGrouping,
     captures_only: bool,
     avoid_cache: bool,
     current_depth: i16,
@@ -78,15 +79,22 @@ pub(crate) fn order_moves(
             let captured_piece_wt = get_piece_weight(target_piece);
 
             // Get value of piece used in capture
-            let own_piece_wt: i16;
-            match board.piece_on(capture_move.get_source()) {
-                Some(own_piece) => own_piece_wt = get_piece_weight(own_piece), // We should expect this, our piece has to start somewhere after all
+            
+            let own_piece_wt: i16 = match board.piece_on(capture_move.get_source()) {
+                Some(own_piece) => get_piece_weight(own_piece), // We should expect this, our piece has to start somewhere after all
                 None => panic!("No piece on move origin"),                     // Panic for now
-            }
+            };
             // moves_captures.push(WeightedMove { chessmove: capture_move, score: 0});
 
             // Check if this move is in our cache (with a flag to disable cache lookup)
-            let cache_result = if USE_CACHE && !avoid_cache { cache.get(board.make_move_new(capture_move).get_hash()) } else { None };
+            let cache_read = cache.cache_ref.read();
+            let cache_result: Option<CacheData> = match cache_read{
+                Ok(read_result) => match USE_CACHE && !avoid_cache {
+                    true => read_result.cache_manager_get(board.make_move_new(capture_move).get_hash()),
+                    false => None,
+                } 
+                Err(_) => None,
+            };
             match  cache_result {
                 Some(cache_result) => {
                     // Move found in cache
@@ -109,7 +117,7 @@ pub(crate) fn order_moves(
                             moves_captures.push(WeightedMove {
                                 chessmove: capture_move,
                                 sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
-                                evaluation: evaluation,
+                                evaluation,
                             })
                         }
                         HashtableResultType::PVMove =>
@@ -118,7 +126,7 @@ pub(crate) fn order_moves(
                             moves_pv.push(WeightedMove {
                                 chessmove: capture_move,
                                 sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
-                                evaluation: evaluation,
+                                evaluation,
                             })
                         }
                         HashtableResultType::CutoffMove =>
@@ -127,7 +135,7 @@ pub(crate) fn order_moves(
                             moves_cutoffs.push(WeightedMove {
                                 chessmove: capture_move,
                                 sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
-                                evaluation: evaluation,
+                                evaluation,
                             })
                         }
                     }
@@ -159,7 +167,14 @@ pub(crate) fn order_moves(
         for other_move in &mut moves {
 
             // Check if this move is in our cache (with a flag to disable cache lookup)
-            let cache_result = if USE_CACHE && !avoid_cache { cache.get(board.make_move_new(other_move).get_hash()) } else { None };
+            let cache_read = cache.cache_ref.read();
+            let cache_result: Option<CacheData> = match cache_read{
+                Ok(read_result) => match USE_CACHE && !avoid_cache {
+                    true => read_result.cache_manager_get(board.make_move_new(other_move).get_hash()),
+                    false => None,
+                } 
+                Err(_) => None,
+            };
             match cache_result {
                 Some(cache_result) => {
                     // Move found in cache
@@ -181,7 +196,7 @@ pub(crate) fn order_moves(
                             moves_other_cached.push(WeightedMove {
                                 chessmove: other_move,
                                 sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
-                                evaluation: evaluation,
+                                evaluation,
                             })
                         }
                         HashtableResultType::PVMove =>
@@ -190,7 +205,7 @@ pub(crate) fn order_moves(
                             moves_pv.push(WeightedMove {
                                 chessmove: other_move,
                                 sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
-                                evaluation: evaluation,
+                                evaluation,
                             })
                         }
                         HashtableResultType::CutoffMove =>
@@ -199,7 +214,7 @@ pub(crate) fn order_moves(
                             moves_cutoffs.push(WeightedMove {
                                 chessmove: other_move,
                                 sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
-                                evaluation: evaluation,
+                                evaluation,
                             })
                         }
                     }
@@ -229,5 +244,5 @@ pub(crate) fn order_moves(
         moves_pv.append(&mut moves_other);
     }
 
-    return moves_pv;
+    moves_pv
 }

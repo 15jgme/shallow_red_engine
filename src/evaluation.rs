@@ -1,6 +1,6 @@
-use crate::utils::{abs_eval_from_color, max};
+use crate::utils::common::{abs_eval_from_color, max};
 use crate::gamestate;
-use crate::{utils::Eval, gamestate::GameState};
+use crate::{utils::common::Eval, gamestate::GameState};
 use crate::psqt::get_psqt_score;
 use chess::{Board, BoardStatus, Color, Piece, Square};
 
@@ -69,7 +69,7 @@ fn evaluate_board_psqt(board: &Board, gamestate: GameState) -> Eval {
             Some(piece_on_sq) => {
                 psqt_eval += get_psqt_score(piece_on_sq, Color::White, sq, gamestate)
             },
-            None => {println!("No piece found when expected, white. Square {}", sq.to_string())},
+            None => {println!("No piece found when expected, white. Square {}", sq)},
         }
     }
 
@@ -80,7 +80,7 @@ fn evaluate_board_psqt(board: &Board, gamestate: GameState) -> Eval {
             Some(piece_on_sq) => {
                 psqt_eval += get_psqt_score(piece_on_sq, Color::Black, sq, gamestate)
             },
-            None => {println!("No piece found when expected, black. Square {}", sq.to_string())},
+            None => {println!("No piece found when expected, black. Square {}", sq)},
         }
     }
 
@@ -95,7 +95,7 @@ fn chebyshev_dist(sq_1: Square, sq_2: Square) -> i16 {
 
 fn endgame_king_heuristics(board: &Board, gamestate: GameState) -> Eval {
     match gamestate {
-        GameState::Opening => Eval { score: 0 },
+        GameState::_Opening => Eval { score: 0 },
         GameState::Middle => Eval { score: 0 },
         GameState::End => {    // Get squares of both kings
             let king_sq_w = board.king_square(Color::White);
@@ -137,7 +137,7 @@ pub(crate) fn evaluate_board(board: Board) -> Eval {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::Eval;
+    use crate::utils::common::Eval;
     use chess::Board;
 
     #[test]
