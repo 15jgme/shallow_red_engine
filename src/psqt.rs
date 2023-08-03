@@ -106,7 +106,7 @@ pub(crate) fn get_psqt_score(piece: Piece, color: Color, square: Square, gamesta
         Piece::Rook => ROOK_PSQT[probe_index],
         Piece::Queen => QUEEN_PSQT[probe_index],
         Piece::King => match gamestate {
-            GameState::Opening => KING_PSQT_MG[probe_index],
+            GameState::_Opening => KING_PSQT_MG[probe_index],
             GameState::Middle => KING_PSQT_MG[probe_index],
             GameState::End => KING_PSQT_EG[probe_index],
         } ,

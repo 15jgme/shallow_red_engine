@@ -12,21 +12,6 @@ pub struct Cache {
 }
 
 impl Cache {
-    // // This function should run in a seperate thread and constantly check for new data to load into the cache
-    // pub fn cache_manager_server(mut self, channel_rx: Receiver<CacheEntry>) {
-    //     loop {
-    //         let cache_rx = channel_rx.recv();
-    //         match cache_rx {
-    //             Ok(new_cache_entry) => self
-    //                 .cache
-    //                 .add(new_cache_entry.board.get_hash(), new_cache_entry.cachedata),
-    //             Err(_) => {
-    //                 println!("Exiting cache server");
-    //                 break;
-    //             } // No senders left break
-    //         }
-    //     }
-    // }
     // This function should run in a seperate thread and constantly check for new data to load into the cache
     pub fn cache_manager_server(arc_cache: Arc<RwLock<Cache>>, channel_rx: Receiver<CacheEntry>) {
         let binding = arc_cache.clone();
@@ -142,7 +127,7 @@ mod tests {
 
         cache_tx.send(cache_entry_to_send).unwrap();
 
-        thread::sleep(Duration::from_nanos(1));
+        thread::sleep(Duration::from_nanos(100));
 
         let cache_retrieve = cache_arc
             .read()

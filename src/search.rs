@@ -1,24 +1,27 @@
 use crate::consts;
 use crate::managers::cache_manager::{CacheData, CacheEntry, HashtableResultType};
-use crate::managers::stats_manager::{Statistics, StatisticsInputGrouping};
+use crate::managers::stats_manager::Statistics;
 use crate::quiescent::quiescent_search;
-use crate::utils::search_interface::SearchParameters;
+use crate::utils::search_interface::{SearchOutput, SearchParameters};
 use crate::{
     ordering,
-    utils::common::{flip_colour, max, Eval},
+    utils::common::{flip_colour, max},
 };
 use chess::{Board, BoardStatus, ChessMove, Color, MoveGen};
 
 pub fn find_best_move(
     board: Board,
     params: SearchParameters,
-    stats_data: &mut Statistics,
-) -> Result<(Eval, ChessMove, [ChessMove; consts::DEPTH_LIM as usize]), ()> {
+) -> Result<SearchOutput, ()> {
     let mut alpha_node = params.alpha;
+
+    // Internal stats data for this node and children
+    let mut node_stats = Statistics::default();
+    node_stats.searched_nodes += 1; // Get a point to the all nodes stats just by visiting
 
     // Check if we're overruning the time limit (provided of depth isnt so large)
     if params.depth <= consts::MAX_DEPTH_TO_CHECK_TIME
-        && params.t_start.elapsed().unwrap() > consts::TIME_LIM
+        && params.t_start.elapsed().unwrap() > params.t_lim
     {
         return Err(()); // Throw an error to abort this depth
     }
@@ -31,8 +34,8 @@ pub fn find_best_move(
         let proposed_line: [ChessMove; consts::DEPTH_LIM as usize] =
             [Default::default(); consts::DEPTH_LIM as usize];
 
-        return Ok((
-            quiescent_search(
+        return Ok(SearchOutput {
+            node_eval: quiescent_search(
                 &board,
                 alpha_node,
                 params.beta,
@@ -41,9 +44,10 @@ pub fn find_best_move(
                 params.cache.clone(),
                 params.depth_lim,
             ),
-            Default::default(),
-            proposed_line,
-        ));
+            best_move: Default::default(),
+            best_line: proposed_line,
+            node_stats,
+        });
 
         // return Ok((
         //     crate::evaluation::evaluate_board(board),
@@ -56,10 +60,6 @@ pub fn find_best_move(
     let child_moves = MoveGen::new_legal(&board);
     // Get length of moves
     let num_moves = child_moves.len();
-
-    if consts::SEARCH_INFO {
-        stats_data.all_nodes += num_moves as i32
-    }
 
     let mut sorted_moves = ordering::order_moves(
         child_moves,
@@ -86,8 +86,7 @@ pub fn find_best_move(
         // Set the PV move to our best move
         max_move = mve;
         // Run a search to the current depth on the PV move
-        // jackson dedbugging todo. BREAKS HERE (search works when we use )
-        (max_val, _, max_line) = find_best_move(
+        let search_output = find_best_move(
             board.make_move_new(mve),
             SearchParameters {
                 depth: params.depth + 1,
@@ -95,13 +94,16 @@ pub fn find_best_move(
                 alpha: -params.beta,
                 beta: -alpha_node,
                 color: flip_colour(params.color),
-                stats: StatisticsInputGrouping{},
                 cache: params.cache.clone(),
                 t_start: params.t_start,
+                t_lim: params.t_lim,
                 first_search_move: None,
-            },
-            stats_data,
+            }
         )?;
+
+        max_val = search_output.node_eval;
+        max_line = search_output.best_line;
+
         // Overwrite the PV move in hash so that we don't need to evaluate it twice
         // (The search routine should catch the fact that we have it already in the cache)
         let _ = params.cache.cache_tx.send(CacheEntry {
@@ -115,10 +117,13 @@ pub fn find_best_move(
         });
     }
 
+    node_stats.all_nodes += sorted_moves.len() as i32;
+
     for weighted_move in &mut sorted_moves {
         let mve = weighted_move.chessmove;
 
-        let (node_evaluation, _best_move, proposed_line);
+        let (node_evaluation, proposed_line);
+        let _best_move: ChessMove;
 
         match weighted_move.evaluation {
             Some(eval) => {
@@ -126,11 +131,11 @@ pub fn find_best_move(
                 node_evaluation = eval;
                 _best_move = Default::default();
                 proposed_line = [Default::default(); consts::DEPTH_LIM as usize];
-                stats_data.caches_used += 1;
+                node_stats.caches_used += 1;
             }
             None => {
                 if params.depth > 0 {
-                    (node_evaluation, _best_move, proposed_line) = find_best_move(
+                    let search_output = find_best_move(
                         board.make_move_new(mve),
                         SearchParameters {
                             depth: params.depth + 1,
@@ -138,13 +143,15 @@ pub fn find_best_move(
                             alpha: -params.beta,
                             beta: -alpha_node,
                             color: flip_colour(params.color),
-                            stats: StatisticsInputGrouping {},
                             cache: params.cache.clone(),
                             t_start: params.t_start,
+                            t_lim: params.t_lim,
                             first_search_move: None,
-                        },
-                        stats_data,
+                        }
                     )?;
+                    node_evaluation = search_output.node_eval;
+                    proposed_line = search_output.best_line;
+                    node_stats += search_output.node_stats; // Add the node stats of the child
                 } else {
                     // We are at the root node, what we don't want to do here is return an error.
                     // This would eliminate any benefit we get from the deepening
@@ -158,16 +165,19 @@ pub fn find_best_move(
                             alpha: -params.beta,
                             beta: -alpha_node,
                             color: flip_colour(params.color),
-                            stats: StatisticsInputGrouping {},
                             cache: params.cache.clone(),
                             t_start: params.t_start,
+                            t_lim: params.t_lim,
                             first_search_move: None,
-                        },
-                        stats_data,
+                        }
                     );
 
                     match search_result {
-                        Ok(result) => (node_evaluation, _best_move, proposed_line) = result,
+                        Ok(result) => {
+                            node_evaluation = result.node_eval;
+                            proposed_line = result.best_line;
+                            node_stats += result.node_stats;
+                        }
                         Err(_) => break,
                     }
                 }
@@ -183,11 +193,6 @@ pub fn find_best_move(
                     },
                 });
             }
-        }
-
-        // Update stats
-        if consts::SEARCH_INFO {
-            stats_data.searched_nodes += 1
         }
 
         // Replace with best move if we determine the move is the best for our current board side
@@ -222,7 +227,7 @@ pub fn find_best_move(
     }
 
     // Overwrite the PV move in the hash
-    let _ = params.cache.cache_tx.send(    CacheEntry{
+    let _ = params.cache.cache_tx.send(CacheEntry {
         board: board.make_move_new(max_move),
         cachedata: CacheData {
             move_depth: params.depth,
@@ -232,22 +237,30 @@ pub fn find_best_move(
         },
     });
 
-
-    Ok((max_val, max_move, max_line))
+    Ok(SearchOutput {
+        node_eval: max_val,
+        best_move: max_move,
+        best_line: max_line,
+        node_stats,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     // use::super*;
 
-    use std::{str::FromStr, time::SystemTime, sync::{Arc, RwLock}};
+    use std::{
+        str::FromStr,
+        sync::{Arc, RwLock},
+        time::{SystemTime, Duration},
+    };
 
     use chess::{Board, ChessMove, Square};
 
     use crate::{
         managers::{
             cache_manager::{Cache, CacheInputGrouping},
-            stats_manager::{Statistics, StatisticsInputGrouping},
+            stats_manager::Statistics,
         },
         utils::search_interface::SearchParameters,
     };
@@ -266,8 +279,6 @@ mod tests {
             all_nodes: 0,
             searched_nodes: 0,
             caches_used: 0,
-            time_ms: 0.0,
-            depth_reached: 1,
         };
 
         let t_start = SystemTime::now(); // Initial time before running
@@ -275,7 +286,10 @@ mod tests {
         let cache_arc = Arc::new(RwLock::new(Cache::default()));
         let (cache_tx, _cache_rx) = Cache::generate_channel();
 
-        let cache = CacheInputGrouping{ cache_ref: cache_arc, cache_tx };
+        let cache = CacheInputGrouping {
+            cache_ref: cache_arc,
+            cache_tx,
+        };
 
         let search_res = find_best_move(
             board,
@@ -285,14 +299,14 @@ mod tests {
                 alpha: i16::MAX - 1,
                 beta: i16::MIN + 1,
                 color: board.side_to_move(),
-                stats: StatisticsInputGrouping{},
                 cache,
                 t_start: &t_start,
+                t_lim: Duration::from_secs(7),
                 first_search_move: Some(mve),
-            },&mut run_stats
+            }
         )
         .unwrap();
-        println!("{:#?}", search_res.1.to_string());
-        assert_ne!(search_res.1, ChessMove::new(Square::C3, Square::E4, None))
+        println!("{:#?}", search_res.best_move.to_string());
+        assert_ne!(search_res.best_move, ChessMove::new(Square::C3, Square::E4, None))
     }
 }

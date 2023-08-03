@@ -95,7 +95,7 @@ fn chebyshev_dist(sq_1: Square, sq_2: Square) -> i16 {
 
 fn endgame_king_heuristics(board: &Board, gamestate: GameState) -> Eval {
     match gamestate {
-        GameState::Opening => Eval { score: 0 },
+        GameState::_Opening => Eval { score: 0 },
         GameState::Middle => Eval { score: 0 },
         GameState::End => {    // Get squares of both kings
             let king_sq_w = board.king_square(Color::White);

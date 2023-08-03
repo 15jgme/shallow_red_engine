@@ -4,7 +4,7 @@ use chess::{Board, Piece, Color};
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum GameState {
-    Opening,
+    _Opening,
     Middle,
     End,
 }

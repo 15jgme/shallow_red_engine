@@ -1,11 +1,12 @@
 use std::ops::{AddAssign, Add};
 use chess::Color;
-use crate::managers::stats_manager::Statistics;
+use crate::managers::stats_manager::{Statistics, StatisticsDepth};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct EngineReturn {
     pub engine_move: String,
-    pub engine_stats: Option<Statistics>,
+    pub engine_search_stats: Option<Statistics>,
+    pub engine_depth_stats: Option<StatisticsDepth>
 }
 
 pub(crate) fn max<T: PartialOrd>(a: T, b: T) -> T {
