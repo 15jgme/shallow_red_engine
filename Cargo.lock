@@ -342,6 +342,7 @@ version = "0.1.0"
 dependencies = [
  "chess",
  "itertools",
+ "parking_lot",
  "serde",
  "tokio",
 ]

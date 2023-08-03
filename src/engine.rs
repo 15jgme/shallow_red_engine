@@ -1,6 +1,7 @@
 use chess::{Board, ChessMove, Color};
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock as old};
+use parking_lot::RwLock;
 use std::thread;
 use std::time::SystemTime;
 

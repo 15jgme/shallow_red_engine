@@ -1,4 +1,5 @@
-use std::{str::FromStr, sync::{Arc, RwLock}, thread};
+use std::{str::FromStr, sync::{Arc, RwLock as old}, thread};
+use parking_lot::RwLock;
 
 use chess::Board;
 use shallow_red_engine::{engine::enter_engine, utils::engine_interface::EngineSettings, managers::cache_manager::{Cache, CacheInputGrouping}};
