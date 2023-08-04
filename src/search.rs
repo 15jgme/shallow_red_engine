@@ -7,9 +7,10 @@ use crate::{
     ordering,
     utils::common::{flip_colour, max},
 };
+use chess::EMPTY;
 use chess::{Board, BoardStatus, ChessMove, Color, MoveGen};
 
-pub fn find_best_move(board: Board, params: SearchParameters) -> Result<SearchOutput, ()> {
+pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<SearchOutput, ()> {
     let mut alpha_node = params.alpha;
 
     // Internal stats data for this node and children
@@ -23,34 +24,34 @@ pub fn find_best_move(board: Board, params: SearchParameters) -> Result<SearchOu
         return Err(()); // Throw an error to abort this depth
     }
 
-    if (params.depth >= params.depth_lim)
+    if (params.depth >= (params.depth_lim + params.extension))
         || (board.status() == BoardStatus::Checkmate)
         || (board.status() == BoardStatus::Stalemate)
     {
-        let mut _blank_move: ChessMove;
-        let proposed_line: [ChessMove; consts::DEPTH_LIM as usize] =
-            [Default::default(); consts::DEPTH_LIM as usize];
+        if *board.checkers() != EMPTY && params.extension < consts::EXTENSION_LIM && board.status() == BoardStatus::Ongoing {
+            // There is a check, run an extension to ensure that
+                params.extension += 1;
+        } else {
+            // We're not in check so finish the search
+            let mut _blank_move: ChessMove;
+            let proposed_line: [ChessMove; consts::DEPTH_LIM  as usize] =
+                [Default::default(); consts::DEPTH_LIM  as usize];
 
-        return Ok(SearchOutput {
-            node_eval: quiescent_search(
-                &board,
-                alpha_node,
-                params.beta,
-                0,
-                params.color,
-                params.cache.clone(),
-                params.depth_lim,
-            ),
-            best_move: Default::default(),
-            best_line: proposed_line,
-            node_stats,
-        });
-
-        // return Ok((
-        //     crate::evaluation::evaluate_board(board),
-        //     Default::default(),
-        //     proposed_line,
-        // ));
+            return Ok(SearchOutput {
+                node_eval: quiescent_search(
+                    &board,
+                    alpha_node,
+                    params.beta,
+                    0,
+                    params.color,
+                    params.cache.clone(),
+                    params.depth_lim,
+                ),
+                best_move: Default::default(),
+                best_line: proposed_line,
+                node_stats,
+            });
+        }
     }
 
     // Generate moves
@@ -75,8 +76,8 @@ pub fn find_best_move(board: Board, params: SearchParameters) -> Result<SearchOu
     };
 
     let mut max_move = sorted_moves[0].chessmove;
-    let mut max_line: [ChessMove; consts::DEPTH_LIM as usize] =
-        [max_move; consts::DEPTH_LIM as usize];
+    let mut max_line: [ChessMove; consts::DEPTH_LIM  as usize] =
+        [max_move; consts::DEPTH_LIM  as usize];
 
     // If we get in a move that we must make first, do that before going through the other moves
     if let Some(mve) = params.first_search_move {
@@ -88,6 +89,7 @@ pub fn find_best_move(board: Board, params: SearchParameters) -> Result<SearchOu
             SearchParameters {
                 depth: params.depth + 1,
                 depth_lim: params.depth_lim,
+                extension: params.extension,
                 alpha: -params.beta,
                 beta: -alpha_node,
                 color: flip_colour(params.color),
@@ -129,7 +131,7 @@ pub fn find_best_move(board: Board, params: SearchParameters) -> Result<SearchOu
                 // We've found this move in the current search no need to assess
                 node_evaluation = eval;
                 _best_move = Default::default();
-                proposed_line = [Default::default(); consts::DEPTH_LIM as usize];
+                proposed_line = [Default::default(); consts::DEPTH_LIM  as usize];
                 node_stats.caches_used += 1;
                 move_is_cache_move = true; // This is a cache move!
             }
@@ -140,6 +142,7 @@ pub fn find_best_move(board: Board, params: SearchParameters) -> Result<SearchOu
                         SearchParameters {
                             depth: params.depth + 1,
                             depth_lim: params.depth_lim,
+                            extension: params.extension,
                             alpha: -params.beta,
                             beta: -alpha_node,
                             color: flip_colour(params.color),
@@ -162,6 +165,7 @@ pub fn find_best_move(board: Board, params: SearchParameters) -> Result<SearchOu
                         SearchParameters {
                             depth: params.depth + 1,
                             depth_lim: params.depth_lim,
+                            extension: params.extension,
                             alpha: -params.beta,
                             beta: -alpha_node,
                             color: flip_colour(params.color),
@@ -259,7 +263,7 @@ mod tests {
     };
 
     use parking_lot::RwLock;
-    use std::sync::{Arc, RwLock as old};
+    use std::sync::Arc;
 
     use chess::{Board, ChessMove, Square};
 
@@ -302,6 +306,7 @@ mod tests {
             SearchParameters {
                 depth: 0,
                 depth_lim: 3,
+                extension: 0,
                 alpha: i16::MAX - 1,
                 beta: i16::MIN + 1,
                 color: board.side_to_move(),

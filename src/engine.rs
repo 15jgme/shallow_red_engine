@@ -1,6 +1,6 @@
 use chess::{Board, ChessMove, Color};
 
-use std::sync::{Arc, RwLock as old};
+use std::sync::{Arc};
 use parking_lot::RwLock;
 use std::thread;
 use std::time::SystemTime;
@@ -63,7 +63,7 @@ pub async fn enter_engine(
 
     let mut best_score: Eval = Eval { score: 0 };
     let mut best_mve: ChessMove = Default::default();
-    let mut best_line: [ChessMove; consts::DEPTH_LIM as usize] = Default::default();
+    let mut best_line: [ChessMove; consts::DEPTH_LIM  as usize] = Default::default();
 
     while (t_start.elapsed().unwrap() < settings.time_limit)
         && (terminal_depth <= consts::DEPTH_LIM)
@@ -86,6 +86,7 @@ pub async fn enter_engine(
             SearchParameters {
                 depth: 0,
                 depth_lim: terminal_depth,
+                extension: 0,
                 alpha: i16::min_value() + 1,
                 beta: i16::max_value() - 1,
                 color: color_i,

@@ -10,7 +10,7 @@ const BOARD_LEN: usize = 64;
 // Boards are expressed from Black's perspective, to improve legibility, flip these grids at some point
 
 // Pawn ♙
-const PAWN_PSQT: [i16; BOARD_LEN] = [
+const PAWN_PSQT_MG: [i16; BOARD_LEN] = [
     0,  0,  0,  0,  0,  0,  0,  0,
     5, 10, 10,-20,-20, 10, 10,  5,
     5, -5,-10,  0,  0,-10, -5,  5,
@@ -18,6 +18,17 @@ const PAWN_PSQT: [i16; BOARD_LEN] = [
     5,  5, 10, 25, 25, 10,  5,  5,
     10, 10, 20, 30, 30, 20, 10, 10,
     50, 50, 50, 50, 50, 50, 50, 50,
+    0,  0,  0,  0,  0,  0,  0,  0,
+];
+
+const PAWN_PSQT_EG: [i16; BOARD_LEN] = [
+    0,  0,  0,  0,  0,  0,  0,  0,
+    10, 10, 10, 10, 10, 10, 10, 10,
+    10, 10, 10, 10, 10, 10, 10, 10,
+    20, 20, 20, 20, 20, 20, 20, 20,
+    30, 30, 30, 30, 30, 30, 30, 30,
+    50, 50, 50, 50, 50, 50, 50, 50,
+    80, 80, 80, 80, 80, 80, 80, 80,
     0,  0,  0,  0,  0,  0,  0,  0,
 ];
 
@@ -100,7 +111,11 @@ pub(crate) fn get_psqt_score(piece: Piece, color: Color, square: Square, gamesta
     };
 
     let eval_abs = match piece {
-        Piece::Pawn => PAWN_PSQT[probe_index],
+        Piece::Pawn => match gamestate {
+            GameState::_Opening => PAWN_PSQT_MG[probe_index],
+            GameState::Middle => PAWN_PSQT_MG[probe_index],
+            GameState::End => PAWN_PSQT_EG[probe_index],
+        },
         Piece::Knight => KNIGHT_PSQT[probe_index],
         Piece::Bishop => BISHOP_PSQT[probe_index],
         Piece::Rook => ROOK_PSQT[probe_index],

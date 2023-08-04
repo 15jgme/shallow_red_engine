@@ -13,6 +13,7 @@ use super::common::Eval;
 pub struct SearchParameters<'a> {
     pub depth: i16,
     pub depth_lim: i16,
+    pub extension: i16,
     pub alpha: i16,
     pub beta: i16,
     pub color: Color,
@@ -25,6 +26,6 @@ pub struct SearchParameters<'a> {
 pub struct SearchOutput {
     pub node_eval: Eval,
     pub best_move: ChessMove,
-    pub best_line: [ChessMove; consts::DEPTH_LIM as usize],
+    pub best_line: [ChessMove; consts::DEPTH_LIM  as usize],
     pub node_stats: Statistics, // Statistics as seen by OUR current node
 }
