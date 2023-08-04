@@ -236,8 +236,8 @@ pub(crate) fn order_moves(
         // Order is as follows, pv > cutoffs > cached capture moves > capture moves > cached non-captures > non-captures
         moves_pv.append(&mut moves_cutoffs);
         moves_pv.append(&mut moves_captures_cached);
-        moves_pv.append(&mut moves_captures);
         moves_pv.append(&mut moves_other_cached);
+        moves_pv.append(&mut moves_captures);
         moves_pv.append(&mut moves_other);
     }
 

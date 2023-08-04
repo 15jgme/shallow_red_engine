@@ -2,7 +2,7 @@ use std::sync::{
     mpsc::{self, Receiver, Sender}
 };
 
-use std::sync::{Arc, RwLock as old};
+use std::sync::{Arc};
 use parking_lot::RwLock;
 
 use chess::{Board, CacheTable};
@@ -22,7 +22,7 @@ impl Cache {
             match cache_rx {
                 Ok(new_cache_entry) => {
                     // println!("Message received: {:#?}", new_cache_entry);
-                    let mut cache = binding.write().
+                    let _ = binding.write().
                     cache
                         .add(new_cache_entry.board.get_hash(), new_cache_entry.cachedata);
                 }
@@ -99,7 +99,7 @@ mod tests {
     };
     use std::thread;
     use std::{
-        sync::{Arc, RwLock as old},
+        sync::{Arc},
         time::Duration,
     };
 

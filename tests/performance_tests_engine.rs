@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::{Arc, RwLock as old}, thread};
+use std::{str::FromStr, sync::{Arc}, thread};
 use parking_lot::RwLock;
 
 use chess::Board;
