@@ -1,7 +1,9 @@
-use crate::consts;
-use crate::managers::cache_manager::{CacheData, CacheEntry, HashtableResultType};
+use crate::consts::{self, USE_CACHE};
+use crate::managers::cache_manager::{BoundType, CacheData, CacheEntry, HashtableResultType};
 use crate::managers::stats_manager::Statistics;
+// use crate::ordering::RetreivedCacheData;
 use crate::quiescent::quiescent_search;
+use crate::utils::common::min;
 use crate::utils::search_interface::{SearchOutput, SearchParameters};
 use crate::{
     ordering,
@@ -11,19 +13,77 @@ use chess::EMPTY;
 use chess::{Board, BoardStatus, ChessMove, Color, MoveGen};
 
 pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<SearchOutput, ()> {
-    let mut alpha_node = params.alpha;
+    let alpha_orig = params.alpha;
 
     // Internal stats data for this node and children
     let mut node_stats = Statistics::default();
     node_stats.searched_nodes += 1; // Get a point to the all nodes stats just by visiting
 
+    // ===================== Check TT for this node ===================== //
+    // Check if this move is in our cache (with a flag to disable cache lookup)
+    match USE_CACHE && params.depth > 0 {
+        true => {
+            if let Some(cache_result) = params
+                .cache
+                .cache_ref
+                .try_read_for(crate::consts::TT_MAXTIME_LOOKUP)
+            {
+                if let Some(cache_result) = cache_result.cache_manager_get(board.get_hash()) {
+                    // Check if we have a sufficient lookup distance
+                    let cache_lookahead = cache_result.search_depth - cache_result.move_depth;
+                    let current_lookahead = params.depth_lim - params.depth;
+                    let evaluation_valid = cache_lookahead >= current_lookahead;
+
+                    if evaluation_valid {
+                        // If the cache is valid manage the cache
+                        node_stats.caches_used += 1;
+                        match cache_result.flag {
+                            BoundType::Exact => {
+                                return Ok(SearchOutput {
+                                    node_eval: cache_result.evaluation,
+                                    best_move: Default::default(),
+                                    node_stats,
+                                });
+                                // return value directly
+                            }
+                            BoundType::UpperBound => {
+                                params.alpha = max(
+                                    params.alpha,
+                                    cache_result.evaluation.for_colour(board.side_to_move()),
+                                )
+                            }
+                            BoundType::LowerBound => {
+                                params.beta = min(
+                                    params.beta,
+                                    cache_result.evaluation.for_colour(board.side_to_move()),
+                                )
+                            }
+                        };
+                        if params.alpha >= params.beta {
+                            return Ok(SearchOutput {
+                                node_eval: cache_result.evaluation,
+                                best_move: Default::default(),
+                                node_stats,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        false => {}
+    };
+    // ===================== Done TT for this node  ===================== //
+
+    // ===================== Check time             ===================== //
     // Check if we're overruning the time limit (provided of depth isnt so large)
     if params.depth <= consts::MAX_DEPTH_TO_CHECK_TIME
         && params.t_start.elapsed().unwrap() > params.t_lim
     {
         return Err(()); // Throw an error to abort this depth
     }
+    // ===================== Done check time        ===================== //
 
+    // Run Extension if needed
     if (params.depth >= (params.depth_lim + params.extension))
         || (board.status() == BoardStatus::Checkmate)
         || (board.status() == BoardStatus::Stalemate)
@@ -41,7 +101,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
             return Ok(SearchOutput {
                 node_eval: quiescent_search(
                     &board,
-                    alpha_node,
+                    params.alpha,
                     params.beta,
                     0,
                     params.cache.clone(),
@@ -88,7 +148,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                 depth_lim: params.depth_lim,
                 extension: params.extension,
                 alpha: -params.beta,
-                beta: -alpha_node,
+                beta: -params.alpha,
                 color: flip_colour(board.side_to_move()),
                 cache: params.cache.clone(),
                 t_start: params.t_start,
@@ -101,15 +161,15 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
 
         // Overwrite the PV move in hash so that we don't need to evaluate it twice
         // (The search routine should catch the fact that we have it already in the cache)
-        let _ = params.cache.cache_tx.send(CacheEntry {
-            board_hash: board.make_move_new(max_move).get_hash(),
-            cachedata: CacheData {
-                move_depth: params.depth,
-                search_depth: params.depth_lim,
-                evaluation: max_val,
-                move_type: HashtableResultType::PVMove,
-            },
-        });
+        // let _ = params.cache.cache_tx.send(CacheEntry {
+        //     board_hash: board.make_move_new(max_move).get_hash(),
+        //     cachedata: CacheData {
+        //         move_depth: params.depth,
+        //         search_depth: params.depth_lim,
+        //         evaluation: max_val,
+        //         move_type: HashtableResultType::PVMove,
+        //     },
+        // });
     }
 
     node_stats.all_nodes += sorted_moves.len() as i32;
@@ -122,64 +182,53 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
 
         let mut move_is_cache_move: bool = false; // Flag to check if the move is a cache move or not (avoid rewriting)
 
-        match weighted_move.evaluation {
-            Some(eval) => {
-                // We've found this move in the current search no need to assess
-                node_evaluation = eval;
-                _best_move = Default::default();
-                node_stats.caches_used += 1;
-                move_is_cache_move = true; // This is a cache move!
-            }
-            None => {
-                let search_result = find_best_move(
-                    board.make_move_new(mve),
-                    SearchParameters {
-                        depth: params.depth + 1,
-                        depth_lim: params.depth_lim,
-                        extension: params.extension,
-                        alpha: -params.beta,
-                        beta: -alpha_node,
-                        color: flip_colour(board.side_to_move()),
-                        cache: params.cache.clone(),
-                        t_start: params.t_start,
-                        t_lim: params.t_lim,
-                        first_search_move: None,
-                    },
-                );
+        let search_result = find_best_move(
+            board.make_move_new(mve),
+            SearchParameters {
+                depth: params.depth + 1,
+                depth_lim: params.depth_lim,
+                extension: params.extension,
+                alpha: -params.beta,
+                beta: -params.alpha,
+                color: flip_colour(board.side_to_move()),
+                cache: params.cache.clone(),
+                t_start: params.t_start,
+                t_lim: params.t_lim,
+                first_search_move: None,
+            },
+        );
 
-                match search_result {
-                    Ok(result) => {
-                        node_evaluation = result.node_eval;
-                        node_stats += result.node_stats;
-                    }
-                    Err(e) => match params.depth > 0 {
-                        true => {
-                            // We are not at the root node, let the error bubble up to halt the search
-                            return Err(e);
-                        }
-                        false => {
-                            // We are at the root node, what we don't want to do here is return an error.
-                            // This would eliminate any benefit we get from the deepening
-                            // Instead, break out of the loop and return the best value we have
-                            break;
-                        }
-                    },
-                }
-
-                // Add move to hash
-                if !move_is_cache_move {
-                    let _ = params.cache.cache_tx.send(CacheEntry {
-                        board_hash: board.make_move_new(mve).get_hash(),
-                        cachedata: CacheData {
-                            move_depth: params.depth,
-                            search_depth: params.depth_lim,
-                            evaluation: node_evaluation,
-                            move_type: HashtableResultType::RegularMove,
-                        },
-                    });
-                }
+        match search_result {
+            Ok(result) => {
+                node_evaluation = result.node_eval;
+                node_stats += result.node_stats;
             }
+            Err(e) => match params.depth > 0 {
+                true => {
+                    // We are not at the root node, let the error bubble up to halt the search
+                    return Err(e);
+                }
+                false => {
+                    // We are at the root node, what we don't want to do here is return an error.
+                    // This would eliminate any benefit we get from the deepening
+                    // Instead, break out of the loop and return the best value we have
+                    break;
+                }
+            },
         }
+
+        // // Add move to hash
+        // if !move_is_cache_move {
+        //     let _ = params.cache.cache_tx.send(CacheEntry {
+        //         board_hash: board.make_move_new(mve).get_hash(),
+        //         cachedata: CacheData {
+        //             move_depth: params.depth,
+        //             search_depth: params.depth_lim,
+        //             evaluation: node_evaluation,
+        //             move_type: HashtableResultType::RegularMove,
+        //         },
+        //     });
+        // }
 
         // Replace with best move if we determine the move is the best for our current board side
         if node_evaluation.for_colour(board.side_to_move())
@@ -193,35 +242,66 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
             println!("Move under consideration {}, number of possible moves {}, evaluation (for colour) {}, depth {}, colour {:#?}", mve, num_moves, node_evaluation.for_colour(board.side_to_move()), params.depth, board.side_to_move())
         }
 
-        alpha_node = max(alpha_node, node_evaluation.for_colour(board.side_to_move()));
+        params.alpha = max(
+            params.alpha,
+            node_evaluation.for_colour(board.side_to_move()),
+        );
 
-        if alpha_node >= params.beta {
+        if params.alpha >= params.beta {
             // Alpha beta cutoff here
 
             // Record in cache that this is a cutoff move
-            if !move_is_cache_move {
-                let _ = params.cache.cache_tx.send(CacheEntry {
-                    board_hash: board.make_move_new(mve).get_hash(),
-                    cachedata: CacheData {
-                        move_depth: params.depth,
-                        search_depth: params.depth_lim,
-                        evaluation: node_evaluation,
-                        move_type: HashtableResultType::CutoffMove,
-                    },
-                });
-            }
+            // if !move_is_cache_move {
+            //     let _ = params.cache.cache_tx.send(CacheEntry {
+            //         board_hash: board.make_move_new(mve).get_hash(),
+            //         cachedata: CacheData {
+            //             move_depth: params.depth,
+            //             search_depth: params.depth_lim,
+            //             evaluation: node_evaluation,
+            //             move_type: HashtableResultType::CutoffMove,
+            //         },
+            //     });
+            // }
             break;
         }
     }
 
+    // Decide how we update load this move into the TT
+    let node_value = max_val;
+    let node_flag: BoundType;
+    if node_value.for_colour(board.side_to_move()) <= alpha_orig {
+        node_flag = BoundType::UpperBound;
+    } else if node_value.for_colour(board.side_to_move()) >= params.beta {
+        node_flag = BoundType::LowerBound;
+    } else {
+        node_flag = BoundType::Exact;
+    }
+
+    let nove_move_type = if params.alpha >= params.beta {
+        HashtableResultType::CutoffMove
+    } else {
+        HashtableResultType::RegularMove
+    };
+
+    let node_entry = CacheEntry {
+        board_hash: board.get_hash(),
+        cachedata: CacheData {
+            move_depth: params.depth,
+            search_depth: params.depth_lim,
+            evaluation: node_value,
+            move_type: nove_move_type,
+            flag: node_flag,
+        },
+    };
+    params.cache.cache_tx.send(node_entry);
     // // Overwrite the PV move in the hash
     // let _ = params.cache.cache_tx.send(CacheEntry {
     //     board_hash: board.make_move_new(max_move).get_hash(),
     //     cachedata: CacheData {
-    //         move_depth: params.depth,
-    //         search_depth: params.depth_lim,
-    //         evaluation: max_val,
-    //         move_type: HashtableResultType::PVMove,
+    // move_depth: params.depth,
+    // search_depth: params.depth_lim,
+    // evaluation: max_val,
+    // move_type: HashtableResultType::PVMove,
     //     },
     // });
 

@@ -1,11 +1,9 @@
-use std::sync::{
-    mpsc::{self, Receiver, Sender}
-};
+use std::sync::mpsc::{self, Receiver, Sender};
 
-use std::sync::{Arc};
+use std::sync::Arc;
 use parking_lot::RwLock;
 
-use chess::{Board, CacheTable};
+use chess::CacheTable;
 
 use crate::utils::common::Eval;
 
@@ -22,7 +20,7 @@ impl Cache {
             match cache_rx {
                 Ok(new_cache_entry) => {
                     // println!("Message received: {:#?}", new_cache_entry);
-                    let _ = binding.write().
+                    binding.write().
                     cache
                         .add(new_cache_entry.board_hash, new_cache_entry.cachedata);
                 }
@@ -54,6 +52,7 @@ impl Default for Cache {
                     search_depth: 0,
                     evaluation: Eval { score: 0 },
                     move_type: HashtableResultType::RegularMove,
+                    flag: BoundType::LowerBound,
                 },
             ),
         }
@@ -66,6 +65,7 @@ pub struct CacheData {
     pub search_depth: i16,
     pub evaluation: Eval,
     pub move_type: HashtableResultType, // What type of move we have
+    pub flag: BoundType,
 }
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
@@ -73,6 +73,13 @@ pub enum HashtableResultType {
     RegularMove,
     PVMove,
     CutoffMove,
+}
+
+#[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Debug)]
+pub enum BoundType {
+    Exact,
+    UpperBound,
+    LowerBound,
 }
 
 // The engine uses this struct to ingest cache data from the engine
@@ -122,6 +129,7 @@ mod tests {
             search_depth: 2,
             evaluation: Eval { score: 3 },
             move_type: HashtableResultType::PVMove,
+            flag: crate::managers::cache_manager::BoundType::LowerBound,
         };
 
         let board: Board = Default::default();

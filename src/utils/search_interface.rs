@@ -4,7 +4,7 @@ use std::time::{SystemTime, Duration};
 
 use chess::{ChessMove, Color};
 
-use crate::consts;
+
 use crate::managers::cache_manager::CacheInputGrouping;
 use crate::managers::stats_manager::Statistics;
 

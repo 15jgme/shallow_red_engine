@@ -1,5 +1,5 @@
 use crate::consts::USE_CACHE;
-use crate::managers::cache_manager::{CacheData, CacheInputGrouping, HashtableResultType};
+use crate::managers::cache_manager::{CacheData, CacheInputGrouping, HashtableResultType, BoundType};
 use crate::utils::common::Eval;
 use chess::{Board, ChessMove, MoveGen, Piece, EMPTY};
 use std::cmp::Ordering;
@@ -16,11 +16,17 @@ fn get_piece_weight(piece: Piece) -> i16 {
     }
 }
 
+#[derive(PartialEq)]
+pub(crate) struct RetreivedCacheData{
+    pub(crate) evaluation: Eval,
+    pub(crate) flag: BoundType,
+}
+
 #[derive(Eq)]
 pub(crate) struct WeightedMove {
     pub(crate) chessmove: ChessMove,
     sort_val: i16,                       // Only to be used internally for sorting
-    pub(crate) evaluation: Option<Eval>, // If we found an evaluation at the same depth search
+    // pub(crate) cacheData: Option<RetreivedCacheData>, // If we found an evaluation at the same depth search
 }
 
 impl Ord for WeightedMove {
@@ -120,7 +126,7 @@ pub(crate) fn order_moves(
                             moves_captures_cached.push(WeightedMove {
                                 chessmove: capture_move,
                                 sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
-                                evaluation,
+                                // cacheData: Some(RetreivedCacheData{ evaluation, flag: cache_result.flag }),
                             })
                         }
                         HashtableResultType::PVMove =>
@@ -129,7 +135,8 @@ pub(crate) fn order_moves(
                             moves_pv.push(WeightedMove {
                                 chessmove: capture_move,
                                 sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
-                                evaluation,
+                                // evaluation,
+                                // flag: Some(cache_result.flag),
                             })
                         }
                         HashtableResultType::CutoffMove =>
@@ -138,7 +145,8 @@ pub(crate) fn order_moves(
                             moves_cutoffs.push(WeightedMove {
                                 chessmove: capture_move,
                                 sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
-                                evaluation,
+                                // evaluation,
+                                // flag: Some(cache_result.flag),
                             })
                         }
                     }
@@ -149,7 +157,8 @@ pub(crate) fn order_moves(
                     moves_captures.push(WeightedMove {
                         chessmove: capture_move,
                         sort_val: captured_piece_wt - own_piece_wt,
-                        evaluation: None,
+                        // evaluation: None,
+                        // flag: None,
                     });
                 }
             }
@@ -202,7 +211,8 @@ pub(crate) fn order_moves(
                             moves_other_cached.push(WeightedMove {
                                 chessmove: other_move,
                                 sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
-                                evaluation,
+                                // evaluation,
+                                // flag: Some(cache_result.flag),
                             })
                         }
                         HashtableResultType::PVMove =>
@@ -211,7 +221,8 @@ pub(crate) fn order_moves(
                             moves_pv.push(WeightedMove {
                                 chessmove: other_move,
                                 sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
-                                evaluation,
+                                // evaluation,
+                                // flag: Some(cache_result.flag),
                             })
                         }
                         HashtableResultType::CutoffMove =>
@@ -220,7 +231,8 @@ pub(crate) fn order_moves(
                             moves_cutoffs.push(WeightedMove {
                                 chessmove: other_move,
                                 sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
-                                evaluation,
+                                // evaluation,
+                                // flag: Some(cache_result.flag),
                             })
                         }
                     }
@@ -231,7 +243,8 @@ pub(crate) fn order_moves(
                     moves_other.push(WeightedMove {
                         chessmove: other_move,
                         sort_val: 0,
-                        evaluation: None,
+                        // evaluation: None,
+                        // flag: None,
                     });
                 }
             }
