@@ -26,6 +26,5 @@ pub struct SearchParameters<'a> {
 pub struct SearchOutput {
     pub node_eval: Eval,
     pub best_move: ChessMove,
-    pub best_line: [ChessMove; consts::DEPTH_LIM  as usize],
     pub node_stats: Statistics, // Statistics as seen by OUR current node
 }

@@ -63,7 +63,6 @@ pub async fn enter_engine(
 
     let mut best_score: Eval = Eval { score: 0 };
     let mut best_mve: ChessMove = Default::default();
-    let mut best_line: [ChessMove; consts::DEPTH_LIM  as usize] = Default::default();
 
     while (t_start.elapsed().unwrap() < settings.time_limit)
         && (terminal_depth <= consts::DEPTH_LIM)
@@ -106,7 +105,6 @@ pub async fn enter_engine(
                 let search_output = result;
                 best_score = search_output.node_eval;
                 best_mve = search_output.best_move;
-                best_line = search_output.best_line;
                 depth_stats.depth_reached += 1;
                 search_stats = search_output.node_stats;
             }
@@ -133,22 +131,6 @@ pub async fn enter_engine(
             "Best move: {}, board score of best move: {}",
             best_mve, best_score.score
         );
-    }
-
-    if settings.verbose {
-        println!("Proposed line:");
-        let mut i: i8 = 1;
-        let mut is_white = color_i == Color::White;
-        for mve in best_line {
-            if is_white {
-                println!("White, Move {}: {}", i, mve);
-            } else {
-                println!("Black, Move {}: {}", i, mve);
-            }
-
-            is_white = !is_white;
-            i += 1;
-        }
     }
 
     let percent_reduction: f32 =

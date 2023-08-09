@@ -34,8 +34,6 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
         } else {
             // We're not in check so finish the search
             let mut _blank_move: ChessMove;
-            let proposed_line: [ChessMove; consts::DEPTH_LIM  as usize] =
-                [Default::default(); consts::DEPTH_LIM  as usize];
 
             return Ok(SearchOutput {
                 node_eval: quiescent_search(
@@ -48,7 +46,6 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                     params.depth_lim,
                 ),
                 best_move: Default::default(),
-                best_line: proposed_line,
                 node_stats,
             });
         }
@@ -76,8 +73,6 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
     };
 
     let mut max_move = sorted_moves[0].chessmove;
-    let mut max_line: [ChessMove; consts::DEPTH_LIM  as usize] =
-        [max_move; consts::DEPTH_LIM  as usize];
 
     // If we get in a move that we must make first, do that before going through the other moves
     if let Some(mve) = params.first_search_move {
@@ -101,12 +96,11 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
         )?;
 
         max_val = search_output.node_eval;
-        max_line = search_output.best_line;
 
         // Overwrite the PV move in hash so that we don't need to evaluate it twice
         // (The search routine should catch the fact that we have it already in the cache)
         let _ = params.cache.cache_tx.send(CacheEntry {
-            board: board.make_move_new(max_move),
+            board_hash: board.make_move_new(max_move).get_hash(),
             cachedata: CacheData {
                 move_depth: params.depth,
                 search_depth: params.depth_lim,
@@ -121,7 +115,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
     for weighted_move in &mut sorted_moves {
         let mve = weighted_move.chessmove;
 
-        let (node_evaluation, proposed_line);
+        let node_evaluation;
         let _best_move: ChessMove;
 
         let mut move_is_cache_move: bool = false; // Flag to check if the move is a cache move or not (avoid rewriting)
@@ -131,7 +125,6 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                 // We've found this move in the current search no need to assess
                 node_evaluation = eval;
                 _best_move = Default::default();
-                proposed_line = [Default::default(); consts::DEPTH_LIM  as usize];
                 node_stats.caches_used += 1;
                 move_is_cache_move = true; // This is a cache move!
             }
@@ -153,7 +146,6 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                         },
                     )?;
                     node_evaluation = search_output.node_eval;
-                    proposed_line = search_output.best_line;
                     node_stats += search_output.node_stats; // Add the node stats of the child
                 } else {
                     // We are at the root node, what we don't want to do here is return an error.
@@ -179,7 +171,6 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                     match search_result {
                         Ok(result) => {
                             node_evaluation = result.node_eval;
-                            proposed_line = result.best_line;
                             node_stats += result.node_stats;
                         }
                         Err(_) => break,
@@ -189,7 +180,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                 // Add move to hash
                 if !move_is_cache_move {
                     let _ = params.cache.cache_tx.send(CacheEntry {
-                        board: board.make_move_new(mve),
+                        board_hash: board.make_move_new(mve).get_hash(),
                         cachedata: CacheData {
                             move_depth: params.depth,
                             search_depth: params.depth_lim,
@@ -205,8 +196,6 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
         if node_evaluation.for_colour(params.color) > max_val.for_colour(params.color) {
             max_val = node_evaluation;
             max_move = mve;
-            max_line = proposed_line;
-            max_line[params.depth as usize] = max_move;
         }
 
         if consts::DEBUG_MODE {
@@ -221,7 +210,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
             // Record in cache that this is a cutoff move
             if !move_is_cache_move {
                 let _ = params.cache.cache_tx.send(CacheEntry {
-                    board: board.make_move_new(mve),
+                    board_hash: board.make_move_new(mve).get_hash(),
                     cachedata: CacheData {
                         move_depth: params.depth,
                         search_depth: params.depth_lim,
@@ -236,7 +225,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
 
     // Overwrite the PV move in the hash
     let _ = params.cache.cache_tx.send(CacheEntry {
-        board: board.make_move_new(max_move),
+        board_hash: board.make_move_new(max_move).get_hash(),
         cachedata: CacheData {
             move_depth: params.depth,
             search_depth: params.depth_lim,
@@ -248,7 +237,6 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
     Ok(SearchOutput {
         node_eval: max_val,
         best_move: max_move,
-        best_line: max_line,
         node_stats,
     })
 }

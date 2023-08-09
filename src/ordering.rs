@@ -84,14 +84,18 @@ pub(crate) fn order_moves(
                 Some(own_piece) => get_piece_weight(own_piece), // We should expect this, our piece has to start somewhere after all
                 None => panic!("No piece on move origin"),      // Panic for now
             };
-            // moves_captures.push(WeightedMove { chessmove: capture_move, score: 0});
 
             // Check if this move is in our cache (with a flag to disable cache lookup)
             let cache_result: Option<CacheData> = match USE_CACHE && !avoid_cache {
-                true => cache
+                true => match cache
                     .cache_ref
-                    .read()
-                    .cache_manager_get(board.make_move_new(capture_move).get_hash()),
+                    .try_read_for(crate::consts::TT_MAXTIME_LOOKUP)
+                {
+                    Some(cache_result) => {
+                        cache_result.cache_manager_get(board.make_move_new(capture_move).get_hash())
+                    }
+                    None => None,
+                },
                 false => None,
             };
             match cache_result {
@@ -101,7 +105,7 @@ pub(crate) fn order_moves(
                     // We do this by making sure that our cache has AT LEAST the same look ahead distance as we do right now
                     let cache_lookahead = cache_result.search_depth - cache_result.move_depth;
                     let current_lookahead = search_lim_depth - current_depth;
-                    let evaluation_valid = cache_lookahead > current_lookahead;
+                    let evaluation_valid = cache_lookahead >= current_lookahead;
 
                     let evaluation: Option<Eval> = if evaluation_valid {
                         Some(cache_result.evaluation)
@@ -113,7 +117,7 @@ pub(crate) fn order_moves(
                         HashtableResultType::RegularMove =>
                         // Push the weighted move struct to the regular capture vector
                         {
-                            moves_captures.push(WeightedMove {
+                            moves_captures_cached.push(WeightedMove {
                                 chessmove: capture_move,
                                 sort_val: cache_result.evaluation.for_colour(board.side_to_move()),
                                 evaluation,
@@ -166,10 +170,15 @@ pub(crate) fn order_moves(
         for other_move in &mut moves {
             // Check if this move is in our cache (with a flag to disable cache lookup)
             let cache_result: Option<CacheData> = match USE_CACHE && !avoid_cache {
-                true => cache
+                true => match cache
                     .cache_ref
-                    .read()
-                    .cache_manager_get(board.make_move_new(other_move).get_hash()),
+                    .try_read_for(crate::consts::TT_MAXTIME_LOOKUP)
+                {
+                    Some(cache_result) => {
+                        cache_result.cache_manager_get(board.make_move_new(other_move).get_hash())
+                    }
+                    None => None,
+                },
                 false => None,
             };
             match cache_result {
@@ -178,7 +187,7 @@ pub(crate) fn order_moves(
                     // We do this by making sure that our cache has AT LEAST the same look ahead distance as we do right now
                     let cache_lookahead = cache_result.search_depth - cache_result.move_depth;
                     let current_lookahead = search_lim_depth - current_depth;
-                    let evaluation_valid = cache_lookahead > current_lookahead;
+                    let evaluation_valid = cache_lookahead >= current_lookahead;
 
                     let evaluation: Option<Eval> = if evaluation_valid {
                         Some(cache_result.evaluation)
@@ -236,8 +245,8 @@ pub(crate) fn order_moves(
         // Order is as follows, pv > cutoffs > cached capture moves > capture moves > cached non-captures > non-captures
         moves_pv.append(&mut moves_cutoffs);
         moves_pv.append(&mut moves_captures_cached);
-        moves_pv.append(&mut moves_other_cached);
         moves_pv.append(&mut moves_captures);
+        moves_pv.append(&mut moves_other_cached);
         moves_pv.append(&mut moves_other);
     }
 

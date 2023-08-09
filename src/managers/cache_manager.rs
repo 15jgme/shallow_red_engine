@@ -24,7 +24,7 @@ impl Cache {
                     // println!("Message received: {:#?}", new_cache_entry);
                     let _ = binding.write().
                     cache
-                        .add(new_cache_entry.board.get_hash(), new_cache_entry.cachedata);
+                        .add(new_cache_entry.board_hash, new_cache_entry.cachedata);
                 }
                 Err(_) => {
                     println!("Exiting cache server");
@@ -78,7 +78,7 @@ pub enum HashtableResultType {
 // The engine uses this struct to ingest cache data from the engine
 #[derive(Debug, Clone, Copy)]
 pub struct CacheEntry {
-    pub board: Board,
+    pub board_hash: u64,
     pub cachedata: CacheData,
 }
 
@@ -103,6 +103,7 @@ mod tests {
         time::Duration,
     };
 
+    use chess::Board;
     use parking_lot::RwLock;
 
     #[test]
@@ -123,8 +124,9 @@ mod tests {
             move_type: HashtableResultType::PVMove,
         };
 
+        let board: Board = Default::default();
         let cache_entry_to_send = CacheEntry {
-            board: Default::default(),
+            board_hash: board.get_hash(),
             cachedata: cache_data,
         };
 
@@ -134,7 +136,7 @@ mod tests {
 
         let cache_retrieve = cache_arc
             .read()
-            .cache_manager_get(cache_entry_to_send.board.get_hash())
+            .cache_manager_get(cache_entry_to_send.board_hash)
             .unwrap();
 
         // let _ = cache_thread_hndl.join();
