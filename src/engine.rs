@@ -15,7 +15,7 @@ use crate::utils::common::Eval;
 use crate::utils::engine_interface::EngineSettings;
 use crate::utils::search_interface::SearchParameters;
 
-pub async fn enter_engine(
+pub fn enter_engine(
     board: Board,
     settings: EngineSettings,
 ) -> (ChessMove, Option<EngineReturn>) {
@@ -168,37 +168,37 @@ mod tests {
     use super::*;
     use chess::{Board, Square};
 
-    #[tokio::test]
-    async fn test_integrated_engine() {
+    #[test]
+    fn test_integrated_engine() {
         let board: Board = Board::default(); // Initial board
-        let (eng_move, _) = enter_engine(board, EngineSettings::default()).await;
+        let (eng_move, _) = enter_engine(board, EngineSettings::default());
         assert!(board.legal(eng_move)); // Make sure the engine move is legal
     }
 
-    #[tokio::test]
-    async fn test_stop_channel() {
+    #[test]
+    fn test_stop_channel() {
         let board: Board = Board::default(); // Initial board
         let (_tx, _rx): (Sender<bool>, Receiver<bool>) = mpsc::channel(); // Stop channel
-        let (eng_move, _) = enter_engine(board, EngineSettings::default()).await;
+        let (eng_move, _) = enter_engine(board, EngineSettings::default());
         assert!(board.legal(eng_move)); // Make sure the engine move is legal
     }
 
-    #[tokio::test]
-    async fn test_board_post_engine() {
+    #[test]
+    fn test_board_post_engine() {
         let board: Board = Board::default(); // Initial board
         let board_orig = board; // Deep copy of board
-        let _eng_move = enter_engine(board, EngineSettings::default()).await;
+        let _eng_move = enter_engine(board, EngineSettings::default());
         assert_eq!(board, board_orig); // Make sure the engine move is legal
     }
 
-    #[tokio::test]
-    async fn test_queen_blunder() {
+    #[test]
+    fn test_queen_blunder() {
         // This sequence was a known queen blunder from a previous revision
         // run an integration test to make sure we don't make it again
 
         let board: Board =
             Board::from_str("r4rk1/pq3ppp/2p5/2PpP3/2pP4/P1P3R1/4QPPP/R5K1 b - - 0 1").unwrap();
-        let (eng_move, _) = enter_engine(board, EngineSettings::default()).await;
+        let (eng_move, _) = enter_engine(board, EngineSettings::default());
 
         assert_ne!(eng_move, ChessMove::new(Square::E2, Square::B2, None))
     }

@@ -28,9 +28,12 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
         || (board.status() == BoardStatus::Checkmate)
         || (board.status() == BoardStatus::Stalemate)
     {
-        if *board.checkers() != EMPTY && params.extension < consts::EXTENSION_LIM && board.status() == BoardStatus::Ongoing {
+        if *board.checkers() != EMPTY
+            && params.extension < consts::EXTENSION_LIM
+            && board.status() == BoardStatus::Ongoing
+        {
             // There is a check, run an extension to ensure that
-                params.extension += 1;
+            params.extension += 1;
         } else {
             // We're not in check so finish the search
             let mut _blank_move: ChessMove;
@@ -41,7 +44,6 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                     alpha_node,
                     params.beta,
                     0,
-                    params.color,
                     params.cache.clone(),
                     params.depth_lim,
                 ),
@@ -129,52 +131,39 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                 move_is_cache_move = true; // This is a cache move!
             }
             None => {
-                if params.depth > 0 {
-                    let search_output = find_best_move(
-                        board.make_move_new(mve),
-                        SearchParameters {
-                            depth: params.depth + 1,
-                            depth_lim: params.depth_lim,
-                            extension: params.extension,
-                            alpha: -params.beta,
-                            beta: -alpha_node,
-                            color: flip_colour(board.side_to_move()),
-                            cache: params.cache.clone(),
-                            t_start: params.t_start,
-                            t_lim: params.t_lim,
-                            first_search_move: None,
-                        },
-                    )?;
-                    node_evaluation = search_output.node_eval;
-                    node_stats += search_output.node_stats; // Add the node stats of the child
-                } else {
-                    // We are at the root node, what we don't want to do here is return an error.
-                    // This would eliminate any benefit we get from the deepening
-                    // Instead, break out of the loop and return the best value we have
+                let search_result = find_best_move(
+                    board.make_move_new(mve),
+                    SearchParameters {
+                        depth: params.depth + 1,
+                        depth_lim: params.depth_lim,
+                        extension: params.extension,
+                        alpha: -params.beta,
+                        beta: -alpha_node,
+                        color: flip_colour(board.side_to_move()),
+                        cache: params.cache.clone(),
+                        t_start: params.t_start,
+                        t_lim: params.t_lim,
+                        first_search_move: None,
+                    },
+                );
 
-                    let search_result = find_best_move(
-                        board.make_move_new(mve),
-                        SearchParameters {
-                            depth: params.depth + 1,
-                            depth_lim: params.depth_lim,
-                            extension: params.extension,
-                            alpha: -params.beta,
-                            beta: -alpha_node,
-                            color: flip_colour(board.side_to_move()),
-                            cache: params.cache.clone(),
-                            t_start: params.t_start,
-                            t_lim: params.t_lim,
-                            first_search_move: None,
-                        },
-                    );
-
-                    match search_result {
-                        Ok(result) => {
-                            node_evaluation = result.node_eval;
-                            node_stats += result.node_stats;
-                        }
-                        Err(_) => break,
+                match search_result {
+                    Ok(result) => {
+                        node_evaluation = result.node_eval;
+                        node_stats += result.node_stats;
                     }
+                    Err(e) => match params.depth > 0 {
+                        true => {
+                            // We are not at the root node, let the error bubble up to halt the search
+                            return Err(e);
+                        }
+                        false => {
+                            // We are at the root node, what we don't want to do here is return an error.
+                            // This would eliminate any benefit we get from the deepening
+                            // Instead, break out of the loop and return the best value we have
+                            break;
+                        }
+                    },
                 }
 
                 // Add move to hash
@@ -193,7 +182,9 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
         }
 
         // Replace with best move if we determine the move is the best for our current board side
-        if node_evaluation.for_colour(board.side_to_move()) > max_val.for_colour(board.side_to_move()) {
+        if node_evaluation.for_colour(board.side_to_move())
+            > max_val.for_colour(board.side_to_move())
+        {
             max_val = node_evaluation;
             max_move = mve;
         }
