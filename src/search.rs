@@ -67,7 +67,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
     ); // sort all the moves
 
     // Initialize with least desirable evaluation
-    let mut max_val = match params.color {
+    let mut max_val = match board.side_to_move() {
         Color::White => crate::consts::UNDESIRABLE_EVAL_WHITE,
         Color::Black => crate::consts::UNDESIRABLE_EVAL_BLACK,
     };
@@ -87,7 +87,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                 extension: params.extension,
                 alpha: -params.beta,
                 beta: -alpha_node,
-                color: flip_colour(params.color),
+                color: flip_colour(board.side_to_move()),
                 cache: params.cache.clone(),
                 t_start: params.t_start,
                 t_lim: params.t_lim,
@@ -138,7 +138,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                             extension: params.extension,
                             alpha: -params.beta,
                             beta: -alpha_node,
-                            color: flip_colour(params.color),
+                            color: flip_colour(board.side_to_move()),
                             cache: params.cache.clone(),
                             t_start: params.t_start,
                             t_lim: params.t_lim,
@@ -160,7 +160,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                             extension: params.extension,
                             alpha: -params.beta,
                             beta: -alpha_node,
-                            color: flip_colour(params.color),
+                            color: flip_colour(board.side_to_move()),
                             cache: params.cache.clone(),
                             t_start: params.t_start,
                             t_lim: params.t_lim,
@@ -193,13 +193,13 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
         }
 
         // Replace with best move if we determine the move is the best for our current board side
-        if node_evaluation.for_colour(params.color) > max_val.for_colour(params.color) {
+        if node_evaluation.for_colour(board.side_to_move()) > max_val.for_colour(board.side_to_move()) {
             max_val = node_evaluation;
             max_move = mve;
         }
 
         if consts::DEBUG_MODE {
-            println!("Move under consideration {}, number of possible moves {}, evaluation (for colour) {}, depth {}, colour {:#?}", mve, num_moves, node_evaluation.for_colour(params.color), params.depth, params.color)
+            println!("Move under consideration {}, number of possible moves {}, evaluation (for colour) {}, depth {}, colour {:#?}", mve, num_moves, node_evaluation.for_colour(board.side_to_move()), params.depth, board.side_to_move())
         }
 
         alpha_node = max(alpha_node, node_evaluation.for_colour(board.side_to_move()));
@@ -223,16 +223,16 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
         }
     }
 
-    // Overwrite the PV move in the hash
-    let _ = params.cache.cache_tx.send(CacheEntry {
-        board_hash: board.make_move_new(max_move).get_hash(),
-        cachedata: CacheData {
-            move_depth: params.depth,
-            search_depth: params.depth_lim,
-            evaluation: max_val,
-            move_type: HashtableResultType::PVMove,
-        },
-    });
+    // // Overwrite the PV move in the hash
+    // let _ = params.cache.cache_tx.send(CacheEntry {
+    //     board_hash: board.make_move_new(max_move).get_hash(),
+    //     cachedata: CacheData {
+    //         move_depth: params.depth,
+    //         search_depth: params.depth_lim,
+    //         evaluation: max_val,
+    //         move_type: HashtableResultType::PVMove,
+    //     },
+    // });
 
     Ok(SearchOutput {
         node_eval: max_val,
