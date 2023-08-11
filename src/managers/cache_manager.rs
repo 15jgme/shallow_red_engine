@@ -25,7 +25,7 @@ impl Cache {
                         .add(new_cache_entry.board_hash, new_cache_entry.cachedata);
                 }
                 Err(_) => {
-                    println!("Exiting cache server");
+                    // println!("Exiting cache server");
                     break;
                 } // No senders left break
             }

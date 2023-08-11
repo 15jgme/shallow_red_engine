@@ -1,7 +1,7 @@
-use crate::utils::common::{abs_eval_from_color, max};
 use crate::gamestate;
-use crate::{utils::common::Eval, gamestate::GameState};
 use crate::psqt::get_psqt_score;
+use crate::utils::common::{abs_eval_from_color, max, min};
+use crate::{gamestate::GameState, utils::common::Eval};
 use chess::{Board, BoardStatus, Color, Piece, Square};
 
 fn evaluate_board_material(board: &Board) -> Eval {
@@ -68,8 +68,10 @@ fn evaluate_board_psqt(board: &Board, gamestate: GameState) -> Eval {
         match board.piece_on(sq) {
             Some(piece_on_sq) => {
                 psqt_eval += get_psqt_score(piece_on_sq, Color::White, sq, gamestate)
-            },
-            None => {println!("No piece found when expected, white. Square {}", sq)},
+            }
+            None => {
+                println!("No piece found when expected, white. Square {}", sq)
+            }
         }
     }
 
@@ -79,8 +81,10 @@ fn evaluate_board_psqt(board: &Board, gamestate: GameState) -> Eval {
         match board.piece_on(sq) {
             Some(piece_on_sq) => {
                 psqt_eval += get_psqt_score(piece_on_sq, Color::Black, sq, gamestate)
-            },
-            None => {println!("No piece found when expected, black. Square {}", sq)},
+            }
+            None => {
+                println!("No piece found when expected, black. Square {}", sq)
+            }
         }
     }
 
@@ -88,24 +92,48 @@ fn evaluate_board_psqt(board: &Board, gamestate: GameState) -> Eval {
 }
 
 fn chebyshev_dist(sq_1: Square, sq_2: Square) -> i16 {
-    let rank_diff = Square::get_rank(&sq_1).to_index() as i16 - Square::get_rank(&sq_2).to_index() as i16;
-    let file_diff = Square::get_file(&sq_1).to_index() as i16 - Square::get_file(&sq_2).to_index() as i16;
+    let rank_diff =
+        Square::get_rank(&sq_1).to_index() as i16 - Square::get_rank(&sq_2).to_index() as i16;
+    let file_diff =
+        Square::get_file(&sq_1).to_index() as i16 - Square::get_file(&sq_2).to_index() as i16;
     max(rank_diff.abs(), file_diff.abs())
+}
+
+fn edge_distance(sq: Square) -> i16{
+    let rank = sq.get_rank().to_index();
+    let file = sq.get_file().to_index();
+
+    let to_nearest_rank = min(rank - 0, 7 - rank);
+    let to_nearest_file = min(file - 0, 7 - file);
+    min(to_nearest_file, to_nearest_rank) as i16
 }
 
 fn endgame_king_heuristics(board: &Board, gamestate: GameState) -> Eval {
     match gamestate {
         GameState::_Opening => Eval { score: 0 },
         GameState::Middle => Eval { score: 0 },
-        GameState::End => {    // Get squares of both kings
+        GameState::End => {
+            // Get squares of both kings
             let king_sq_w = board.king_square(Color::White);
             let king_sq_b = board.king_square(Color::Black);
-        
+
+            // Compute the king distance heuristic
             let dist = chebyshev_dist(king_sq_w, king_sq_b);
-        
-            let dist_weight = -3; // Want to be as close as possible to enemy king to cut it off
+
+            let dist_weight = -5; // Want to be as close as possible to enemy king to cut it off
             let score = dist * dist_weight;
-            abs_eval_from_color(score, board.side_to_move())},
+            let king_distance_bonus = abs_eval_from_color(score, board.side_to_move());
+
+            // Compute the king position heuristic
+            let opponent_king_sq = match board.side_to_move() {
+                Color::White => king_sq_b,
+                Color::Black => king_sq_w,
+            };
+
+            let position_weight = -5;
+            let enemy_king_position_bonus = abs_eval_from_color(position_weight*edge_distance(opponent_king_sq), board.side_to_move());
+            king_distance_bonus + enemy_king_position_bonus
+        }
     }
 }
 
@@ -130,6 +158,7 @@ pub(crate) fn evaluate_board(board: Board) -> Eval {
             let king_eg_eval = endgame_king_heuristics(&board, current_gamestate);
 
             material_eval + psqt_eval + king_eg_eval
+            // material_eval
         }
     }
 }
@@ -149,7 +178,10 @@ mod tests {
     #[test]
     fn test_default_board_psqt() {
         let initial_board = Board::default();
-        assert_eq!(evaluate_board_psqt(&initial_board, GameState::Middle), Eval { score: 0 })
+        assert_eq!(
+            evaluate_board_psqt(&initial_board, GameState::Middle),
+            Eval { score: 0 }
+        )
     }
 
     #[test]
@@ -159,9 +191,17 @@ mod tests {
     }
 
     #[test]
-    fn test_chebyshev_dist(){
+    fn test_chebyshev_dist() {
         assert_eq!(chebyshev_dist(Square::F6, Square::F5), 1);
         assert_eq!(chebyshev_dist(Square::F6, Square::B1), 5);
         assert_eq!(chebyshev_dist(Square::F6, Square::C7), 3);
+    }
+
+    #[test]
+    fn test_edge_distance() {
+        assert_eq!(edge_distance(Square::A7), 0);
+        assert_eq!(edge_distance(Square::D5), 3);
+        assert_eq!(edge_distance(Square::E1), 0);
+        assert_eq!(edge_distance(Square::E3), 2);
     }
 }

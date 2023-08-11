@@ -156,20 +156,10 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                 first_search_move: None,
             },
         )?;
-
         max_val = search_output.node_eval;
-
-        // Overwrite the PV move in hash so that we don't need to evaluate it twice
-        // (The search routine should catch the fact that we have it already in the cache)
-        // let _ = params.cache.cache_tx.send(CacheEntry {
-        //     board_hash: board.make_move_new(max_move).get_hash(),
-        //     cachedata: CacheData {
-        //         move_depth: params.depth,
-        //         search_depth: params.depth_lim,
-        //         evaluation: max_val,
-        //         move_type: HashtableResultType::PVMove,
-        //     },
-        // });
+        node_stats += search_output.node_stats;
+        // Remove the pv move from the search (we've already assessed it)
+        if let Some(index) =  sorted_moves.iter().position(|x| x.chessmove == mve) {sorted_moves.remove(index);};
     }
 
     node_stats.all_nodes += sorted_moves.len() as i32;
@@ -180,7 +170,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
         let node_evaluation;
         let _best_move: ChessMove;
 
-        let mut move_is_cache_move: bool = false; // Flag to check if the move is a cache move or not (avoid rewriting)
+        let _move_is_cache_move: bool = false; // Flag to check if the move is a cache move or not (avoid rewriting)
 
         let search_result = find_best_move(
             board.make_move_new(mve),
@@ -217,19 +207,6 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
             },
         }
 
-        // // Add move to hash
-        // if !move_is_cache_move {
-        //     let _ = params.cache.cache_tx.send(CacheEntry {
-        //         board_hash: board.make_move_new(mve).get_hash(),
-        //         cachedata: CacheData {
-        //             move_depth: params.depth,
-        //             search_depth: params.depth_lim,
-        //             evaluation: node_evaluation,
-        //             move_type: HashtableResultType::RegularMove,
-        //         },
-        //     });
-        // }
-
         // Replace with best move if we determine the move is the best for our current board side
         if node_evaluation.for_colour(board.side_to_move())
             > max_val.for_colour(board.side_to_move())
@@ -249,19 +226,6 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
 
         if params.alpha >= params.beta {
             // Alpha beta cutoff here
-
-            // Record in cache that this is a cutoff move
-            // if !move_is_cache_move {
-            //     let _ = params.cache.cache_tx.send(CacheEntry {
-            //         board_hash: board.make_move_new(mve).get_hash(),
-            //         cachedata: CacheData {
-            //             move_depth: params.depth,
-            //             search_depth: params.depth_lim,
-            //             evaluation: node_evaluation,
-            //             move_type: HashtableResultType::CutoffMove,
-            //         },
-            //     });
-            // }
             break;
         }
     }

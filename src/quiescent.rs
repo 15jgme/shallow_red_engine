@@ -23,7 +23,7 @@ pub(crate) fn quiescent_search(
     alpha = max(alpha, stand_pat.for_colour(board.side_to_move()));
 
     let capture_moves = MoveGen::new_legal(board);
-    let sorted_moves = ordering::order_moves(capture_moves, *board, cache.clone(), true, false, depth, depth_lim); // sort all the moves
+    let sorted_moves = ordering::order_moves(capture_moves, board.clone(), cache.clone(), true, true, depth, depth_lim); // sort all the moves
 
     for capture_move_score in sorted_moves {
         let capture_move = capture_move_score.chessmove;

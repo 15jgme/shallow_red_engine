@@ -113,7 +113,7 @@ pub(crate) fn order_moves(
                     let current_lookahead = search_lim_depth - current_depth;
                     let evaluation_valid = cache_lookahead >= current_lookahead;
 
-                    let evaluation: Option<Eval> = if evaluation_valid {
+                    let _evaluation: Option<Eval> = if evaluation_valid {
                         Some(cache_result.evaluation)
                     } else {
                         None
@@ -166,8 +166,9 @@ pub(crate) fn order_moves(
     }
 
     // Sort captures (descending order)
-    moves_captures_cached.sort_by(|a, b| b.cmp(a));
-    moves_captures.sort_by(|a, b| b.cmp(a));
+
+    moves_captures_cached.sort_unstable_by(|a, b| b.cmp(a));
+    moves_captures.sort_unstable_by(|a, b| b.cmp(a));
 
     if !captures_only {
         // Other moves (non-captures)
@@ -198,7 +199,7 @@ pub(crate) fn order_moves(
                     let current_lookahead = search_lim_depth - current_depth;
                     let evaluation_valid = cache_lookahead >= current_lookahead;
 
-                    let evaluation: Option<Eval> = if evaluation_valid {
+                    let _evaluation: Option<Eval> = if evaluation_valid {
                         Some(cache_result.evaluation)
                     } else {
                         None
@@ -251,9 +252,9 @@ pub(crate) fn order_moves(
         }
 
         // Sort other moves (descending order)
-        moves_other_cached.sort_by(|a, b| b.cmp(a));
+        moves_other_cached.sort_unstable_by(|a, b| b.cmp(a));
 
-        moves_cutoffs.sort_by(|a, b| b.cmp(a));
+        moves_cutoffs.sort_unstable_by(|a, b| b.cmp(a));
 
         // Order is as follows, pv > cutoffs > cached capture moves > capture moves > cached non-captures > non-captures
         moves_pv.append(&mut moves_cutoffs);
