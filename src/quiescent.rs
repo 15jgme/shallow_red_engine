@@ -1,6 +1,6 @@
 use chess::{Board, MoveGen};
 
-use crate::{utils::common::{Eval, abs_eval_from_color, max, min, flip_colour}, evaluation::evaluate_board, ordering, consts::QUIESENT_LIM, managers::cache_manager::CacheInputGrouping};
+use crate::{utils::common::{Eval, abs_eval_from_color}, evaluation::evaluate_board, ordering, consts::QUIESENT_LIM};
 
 fn fetch_sorted_captures(board: &Board) -> std::vec::IntoIter<chess::ChessMove>{
     let mut capture_moves = MoveGen::new_legal(board);
@@ -23,7 +23,7 @@ pub(crate) fn quiescent_search(
 
     let sorted_moves = fetch_sorted_captures(board);
 
-    if(alpha < stand_pat.for_colour(board.side_to_move())){
+    if alpha < stand_pat.for_colour(board.side_to_move()) {
         alpha = stand_pat.for_colour(board.side_to_move());
     }
 

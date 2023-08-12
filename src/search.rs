@@ -1,5 +1,5 @@
 use crate::consts::{self, USE_CACHE};
-use crate::evaluation::evaluate_board;
+
 use crate::managers::cache_manager::{BoundType, CacheData, CacheEntry, HashtableResultType};
 use crate::managers::stats_manager::Statistics;
 // use crate::ordering::RetreivedCacheData;
@@ -257,7 +257,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
             cutoff_move: cutoff_move,
         },
     };
-    params.cache.cache_tx.send(node_entry);
+    let _ = params.cache.cache_tx.send(node_entry);
 
     Ok(SearchOutput {
         node_eval: max_val,

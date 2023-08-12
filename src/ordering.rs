@@ -22,7 +22,7 @@ pub(crate) struct RetreivedCacheData {
 }
 
 pub(crate) fn order_moves(
-    mut moves: MoveGen,
+    moves: MoveGen,
     board: Board,
     pv_move: Option<ChessMove>,
     cutoff_move: Option<ChessMove>,
