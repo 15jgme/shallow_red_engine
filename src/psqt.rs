@@ -7,8 +7,6 @@ use crate::gamestate::GameState;
 
 const BOARD_LEN: usize = 64;
 
-// Boards are expressed from Black's perspective, to improve legibility, flip these grids at some point
-
 // Pawn ♙
 const PAWN_PSQT_MG: [i16; BOARD_LEN] = [
     0,  0,  0,  0,  0,  0,  0,  0,

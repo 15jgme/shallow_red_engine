@@ -17,6 +17,14 @@ pub(crate) fn max<T: PartialOrd>(a: T, b: T) -> T {
     }
 }
 
+pub(crate) fn min<T: PartialOrd>(a: T, b: T) -> T {
+    if a >= b {
+        b
+    } else {
+        a
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq)]
 pub struct Eval {
     pub score: i16, // Score is always (ALWAYS!) expressed as + is winning for White

@@ -1,11 +1,9 @@
-use std::sync::{
-    mpsc::{self, Receiver, Sender}
-};
+use std::sync::mpsc::{self, Receiver, Sender};
 
-use std::sync::{Arc};
+use std::sync::Arc;
 use parking_lot::RwLock;
 
-use chess::{Board, CacheTable};
+use chess::{CacheTable, ChessMove};
 
 use crate::utils::common::Eval;
 
@@ -22,12 +20,12 @@ impl Cache {
             match cache_rx {
                 Ok(new_cache_entry) => {
                     // println!("Message received: {:#?}", new_cache_entry);
-                    let _ = binding.write().
+                    binding.write().
                     cache
-                        .add(new_cache_entry.board.get_hash(), new_cache_entry.cachedata);
+                        .add(new_cache_entry.board_hash, new_cache_entry.cachedata);
                 }
                 Err(_) => {
-                    println!("Exiting cache server");
+                    // println!("Exiting cache server");
                     break;
                 } // No senders left break
             }
@@ -54,6 +52,9 @@ impl Default for Cache {
                     search_depth: 0,
                     evaluation: Eval { score: 0 },
                     move_type: HashtableResultType::RegularMove,
+                    flag: BoundType::LowerBound,
+                    pv_move: None,
+                    cutoff_move: None,
                 },
             ),
         }
@@ -66,6 +67,9 @@ pub struct CacheData {
     pub search_depth: i16,
     pub evaluation: Eval,
     pub move_type: HashtableResultType, // What type of move we have
+    pub flag: BoundType,
+    pub pv_move: Option<ChessMove>, // Best move (to be looked at first)
+    pub cutoff_move: Option<ChessMove>, // Move that caused a alpha beta cutoff 
 }
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
@@ -75,10 +79,17 @@ pub enum HashtableResultType {
     CutoffMove,
 }
 
+#[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Debug)]
+pub enum BoundType {
+    Exact,
+    UpperBound,
+    LowerBound,
+}
+
 // The engine uses this struct to ingest cache data from the engine
 #[derive(Debug, Clone, Copy)]
 pub struct CacheEntry {
-    pub board: Board,
+    pub board_hash: u64,
     pub cachedata: CacheData,
 }
 
@@ -103,6 +114,7 @@ mod tests {
         time::Duration,
     };
 
+    use chess::Board;
     use parking_lot::RwLock;
 
     #[test]
@@ -121,10 +133,14 @@ mod tests {
             search_depth: 2,
             evaluation: Eval { score: 3 },
             move_type: HashtableResultType::PVMove,
+            flag: crate::managers::cache_manager::BoundType::LowerBound,
+            pv_move: None,
+            cutoff_move: None,
         };
 
+        let board: Board = Default::default();
         let cache_entry_to_send = CacheEntry {
-            board: Default::default(),
+            board_hash: board.get_hash(),
             cachedata: cache_data,
         };
 
@@ -134,7 +150,7 @@ mod tests {
 
         let cache_retrieve = cache_arc
             .read()
-            .cache_manager_get(cache_entry_to_send.board.get_hash())
+            .cache_manager_get(cache_entry_to_send.board_hash)
             .unwrap();
 
         // let _ = cache_thread_hndl.join();

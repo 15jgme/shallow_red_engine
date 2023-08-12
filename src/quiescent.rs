@@ -1,50 +1,74 @@
-use chess::{Board, Color, MoveGen};
+use chess::{Board, MoveGen};
 
-use crate::{utils::common::{Eval, abs_eval_from_color, max, flip_colour}, evaluation::evaluate_board, ordering, consts::QUIESENT_LIM, managers::cache_manager::CacheInputGrouping};
+use crate::{utils::common::{Eval, abs_eval_from_color}, evaluation::evaluate_board, ordering, consts::QUIESENT_LIM};
 
-
-
+fn fetch_sorted_captures(board: &Board) -> std::vec::IntoIter<chess::ChessMove>{
+    let mut capture_moves = MoveGen::new_legal(board);
+    capture_moves.set_iterator_mask(*board.color_combined(!board.side_to_move())); // Set mask for captures
+    ordering::order_moves(capture_moves, *board, None, None) // sort all the moves
+}
 
 pub(crate) fn quiescent_search(
     board: &Board,
-    alpha_old: i16,
+    alpha: i16,
     beta: i16,
     depth: i16,
-    color_i: Color,
-    cache: CacheInputGrouping,
-    depth_lim: i16,
 ) -> Eval {
-    let mut alpha = alpha_old;
-
+    let mut alpha = alpha;
     // Search through all terminal captures
     let stand_pat = evaluate_board(*board);
-    if stand_pat.for_colour(color_i) >= beta || depth > QUIESENT_LIM {
-        return abs_eval_from_color(beta, color_i);
+    if stand_pat.for_colour(board.side_to_move()) >= beta || depth > QUIESENT_LIM {
+        return abs_eval_from_color(beta, board.side_to_move());
     }
 
-    alpha = max(alpha, stand_pat.for_colour(color_i));
+    let sorted_moves = fetch_sorted_captures(board);
 
-    let capture_moves = MoveGen::new_legal(board);
-    let sorted_moves = ordering::order_moves(capture_moves, *board, cache.clone(), true, true, depth, depth_lim); // sort all the moves
+    if alpha < stand_pat.for_colour(board.side_to_move()) {
+        alpha = stand_pat.for_colour(board.side_to_move());
+    }
 
-    for capture_move_score in sorted_moves {
-        let capture_move = capture_move_score.chessmove;
+    for capture_move in sorted_moves {
         let score = quiescent_search(
             &board.make_move_new(capture_move),
             -beta,
             -alpha,
             depth + 1,
-            flip_colour(color_i),
-            cache.clone(),
-            depth_lim,
         );
 
-        if score.for_colour(color_i) >= beta {
-            return abs_eval_from_color(beta, color_i);
+        if score.for_colour(board.side_to_move()) >= beta {
+            return abs_eval_from_color(beta, board.side_to_move());
         }
+        if stand_pat.for_colour(board.side_to_move()) > alpha {
+            alpha = stand_pat.for_colour(board.side_to_move());
+        }
+    }
+    abs_eval_from_color(alpha, board.side_to_move())
+}
 
-        alpha = max(alpha, score.for_colour(color_i));
+#[cfg(test)]
+mod tests{
+    use std::str::FromStr;
+
+    use chess::{Board, ChessMove, Square};
+
+    use super::{fetch_sorted_captures, quiescent_search};
+
+    #[test]
+    fn test_caputes_only(){
+        let board_init: Board = Default::default();
+        let mut sorted_cap = fetch_sorted_captures(&board_init);
+        assert_eq!(sorted_cap.next(), None); // Confirm we are using only captures!
+
+        let board_eg: Board = Board::from_str("8/3K4/8/8/8/8/3R4/3k4 b - - 0 1").unwrap();
+        let mut sorted_cap = fetch_sorted_captures(&board_eg);
+        assert_eq!(sorted_cap.next(), Some(ChessMove::new(Square::D1, Square::D2, None)));
+        assert_eq!(sorted_cap.next(), None);
     }
 
-    abs_eval_from_color(alpha, color_i)
+    #[test]
+    fn test_quiescent_basic(){
+        let board_eg: Board = Board::from_str("8/3K4/8/8/8/8/3R4/3k4 b - - 0 1").unwrap();
+        let q_res = quiescent_search(&board_eg, i16::min_value() + 1, i16::max_value() - 1, 0);
+        println!("{:#?}", q_res);
+    }
 }

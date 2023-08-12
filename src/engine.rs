@@ -15,7 +15,7 @@ use crate::utils::common::Eval;
 use crate::utils::engine_interface::EngineSettings;
 use crate::utils::search_interface::SearchParameters;
 
-pub async fn enter_engine(
+pub fn enter_engine(
     board: Board,
     settings: EngineSettings,
 ) -> (ChessMove, Option<EngineReturn>) {
@@ -63,7 +63,6 @@ pub async fn enter_engine(
 
     let mut best_score: Eval = Eval { score: 0 };
     let mut best_mve: ChessMove = Default::default();
-    let mut best_line: [ChessMove; consts::DEPTH_LIM  as usize] = Default::default();
 
     while (t_start.elapsed().unwrap() < settings.time_limit)
         && (terminal_depth <= consts::DEPTH_LIM)
@@ -106,7 +105,6 @@ pub async fn enter_engine(
                 let search_output = result;
                 best_score = search_output.node_eval;
                 best_mve = search_output.best_move;
-                best_line = search_output.best_line;
                 depth_stats.depth_reached += 1;
                 search_stats = search_output.node_stats;
             }
@@ -133,22 +131,6 @@ pub async fn enter_engine(
             "Best move: {}, board score of best move: {}",
             best_mve, best_score.score
         );
-    }
-
-    if settings.verbose {
-        println!("Proposed line:");
-        let mut i: i8 = 1;
-        let mut is_white = color_i == Color::White;
-        for mve in best_line {
-            if is_white {
-                println!("White, Move {}: {}", i, mve);
-            } else {
-                println!("Black, Move {}: {}", i, mve);
-            }
-
-            is_white = !is_white;
-            i += 1;
-        }
     }
 
     let percent_reduction: f32 =
@@ -186,37 +168,37 @@ mod tests {
     use super::*;
     use chess::{Board, Square};
 
-    #[tokio::test]
-    async fn test_integrated_engine() {
+    #[test]
+    fn test_integrated_engine() {
         let board: Board = Board::default(); // Initial board
-        let (eng_move, _) = enter_engine(board, EngineSettings::default()).await;
+        let (eng_move, _) = enter_engine(board, EngineSettings::default());
         assert!(board.legal(eng_move)); // Make sure the engine move is legal
     }
 
-    #[tokio::test]
-    async fn test_stop_channel() {
+    #[test]
+    fn test_stop_channel() {
         let board: Board = Board::default(); // Initial board
         let (_tx, _rx): (Sender<bool>, Receiver<bool>) = mpsc::channel(); // Stop channel
-        let (eng_move, _) = enter_engine(board, EngineSettings::default()).await;
+        let (eng_move, _) = enter_engine(board, EngineSettings::default());
         assert!(board.legal(eng_move)); // Make sure the engine move is legal
     }
 
-    #[tokio::test]
-    async fn test_board_post_engine() {
+    #[test]
+    fn test_board_post_engine() {
         let board: Board = Board::default(); // Initial board
         let board_orig = board; // Deep copy of board
-        let _eng_move = enter_engine(board, EngineSettings::default()).await;
+        let _eng_move = enter_engine(board, EngineSettings::default());
         assert_eq!(board, board_orig); // Make sure the engine move is legal
     }
 
-    #[tokio::test]
-    async fn test_queen_blunder() {
+    #[test]
+    fn test_queen_blunder() {
         // This sequence was a known queen blunder from a previous revision
         // run an integration test to make sure we don't make it again
 
         let board: Board =
             Board::from_str("r4rk1/pq3ppp/2p5/2PpP3/2pP4/P1P3R1/4QPPP/R5K1 b - - 0 1").unwrap();
-        let (eng_move, _) = enter_engine(board, EngineSettings::default()).await;
+        let (eng_move, _) = enter_engine(board, EngineSettings::default());
 
         assert_ne!(eng_move, ChessMove::new(Square::E2, Square::B2, None))
     }

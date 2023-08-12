@@ -4,7 +4,7 @@ use std::time::{SystemTime, Duration};
 
 use chess::{ChessMove, Color};
 
-use crate::consts;
+
 use crate::managers::cache_manager::CacheInputGrouping;
 use crate::managers::stats_manager::Statistics;
 
@@ -26,6 +26,5 @@ pub struct SearchParameters<'a> {
 pub struct SearchOutput {
     pub node_eval: Eval,
     pub best_move: ChessMove,
-    pub best_line: [ChessMove; consts::DEPTH_LIM  as usize],
     pub node_stats: Statistics, // Statistics as seen by OUR current node
 }
