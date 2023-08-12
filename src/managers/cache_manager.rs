@@ -3,7 +3,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use parking_lot::RwLock;
 
-use chess::CacheTable;
+use chess::{CacheTable, ChessMove};
 
 use crate::utils::common::Eval;
 
@@ -53,6 +53,8 @@ impl Default for Cache {
                     evaluation: Eval { score: 0 },
                     move_type: HashtableResultType::RegularMove,
                     flag: BoundType::LowerBound,
+                    pv_move: None,
+                    cutoff_move: None,
                 },
             ),
         }
@@ -66,6 +68,8 @@ pub struct CacheData {
     pub evaluation: Eval,
     pub move_type: HashtableResultType, // What type of move we have
     pub flag: BoundType,
+    pub pv_move: Option<ChessMove>, // Best move (to be looked at first)
+    pub cutoff_move: Option<ChessMove>, // Move that caused a alpha beta cutoff 
 }
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
@@ -130,6 +134,8 @@ mod tests {
             evaluation: Eval { score: 3 },
             move_type: HashtableResultType::PVMove,
             flag: crate::managers::cache_manager::BoundType::LowerBound,
+            pv_move: None,
+            cutoff_move: None,
         };
 
         let board: Board = Default::default();

@@ -1,4 +1,5 @@
 use crate::consts::{self, USE_CACHE};
+use crate::evaluation::evaluate_board;
 use crate::managers::cache_manager::{BoundType, CacheData, CacheEntry, HashtableResultType};
 use crate::managers::stats_manager::Statistics;
 // use crate::ordering::RetreivedCacheData;
@@ -15,9 +16,13 @@ use chess::{Board, BoardStatus, ChessMove, Color, MoveGen};
 pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<SearchOutput, ()> {
     let alpha_orig = params.alpha;
 
+    let mut cache_pv_move: Option<ChessMove> = None;
+    let mut cache_cutoff_move: Option<ChessMove> = None;
+
     // Internal stats data for this node and children
     let mut node_stats = Statistics::default();
     node_stats.searched_nodes += 1; // Get a point to the all nodes stats just by visiting
+    let mut max_move = ChessMove::default();
 
     // ===================== Check TT for this node ===================== //
     // Check if this move is in our cache (with a flag to disable cache lookup)
@@ -66,13 +71,26 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                                 node_stats,
                             });
                         }
+                        // Populate the PV and cutoff moves
+                        // Look at these first even if the cache isn't technically valid
+                        cache_pv_move = cache_result.pv_move;
+                        cache_cutoff_move = cache_result.cutoff_move;
+
                     }
+
                 }
             }
         }
         false => {}
     };
     // ===================== Done TT for this node  ===================== //
+
+    // Initial PV
+    // If we're given an initial pc move, make sure we search it first
+    if let Some(mve) = params.first_search_move {
+        cache_pv_move = Some(mve);
+        max_move = mve;
+    }
 
     // ===================== Check time             ===================== //
     // Check if we're overruning the time limit (provided of depth isnt so large)
@@ -98,14 +116,22 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
             // We're not in check so finish the search
             let mut _blank_move: ChessMove;
 
+            // return Ok(SearchOutput {
+            //     node_eval: quiescent_search(
+            //         &board,
+            //         params.alpha,
+            //         params.beta,
+            //         0,
+            //         params.cache.clone(),
+            //         params.depth_lim,
+            //     ),
+            //     best_move: Default::default(),
+            //     node_stats,
+            // });
+            
             return Ok(SearchOutput {
-                node_eval: quiescent_search(
-                    &board,
-                    params.alpha,
-                    params.beta,
-                    0,
-                    params.cache.clone(),
-                    params.depth_lim,
+                node_eval: evaluate_board(
+                    board,
                 ),
                 best_move: Default::default(),
                 node_stats,
@@ -121,11 +147,8 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
     let mut sorted_moves = ordering::order_moves(
         child_moves,
         board,
-        params.cache.clone(),
-        false,
-        false,
-        params.depth,
-        params.depth_lim,
+        cache_pv_move,
+        cache_cutoff_move,
     ); // sort all the moves
 
     // Initialize with least desirable evaluation
@@ -134,38 +157,10 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
         Color::Black => crate::consts::UNDESIRABLE_EVAL_BLACK,
     };
 
-    let mut max_move = sorted_moves[0].chessmove;
-
-    // If we get in a move that we must make first, do that before going through the other moves
-    if let Some(mve) = params.first_search_move {
-        // Set the PV move to our best move
-        max_move = mve;
-        // Run a search to the current depth on the PV move
-        let search_output = find_best_move(
-            board.make_move_new(mve),
-            SearchParameters {
-                depth: params.depth + 1,
-                depth_lim: params.depth_lim,
-                extension: params.extension,
-                alpha: -params.beta,
-                beta: -params.alpha,
-                color: flip_colour(board.side_to_move()),
-                cache: params.cache.clone(),
-                t_start: params.t_start,
-                t_lim: params.t_lim,
-                first_search_move: None,
-            },
-        )?;
-        max_val = search_output.node_eval;
-        node_stats += search_output.node_stats;
-        // Remove the pv move from the search (we've already assessed it)
-        if let Some(index) =  sorted_moves.iter().position(|x| x.chessmove == mve) {sorted_moves.remove(index);};
-    }
-
     node_stats.all_nodes += sorted_moves.len() as i32;
+    let mut cutoff_move = None;
 
-    for weighted_move in &mut sorted_moves {
-        let mve = weighted_move.chessmove;
+    for mve in &mut sorted_moves {
 
         let node_evaluation;
         let _best_move: ChessMove;
@@ -202,6 +197,10 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                     // We are at the root node, what we don't want to do here is return an error.
                     // This would eliminate any benefit we get from the deepening
                     // Instead, break out of the loop and return the best value we have
+                    if max_move == Default::default() {
+                        // If we only have the default move just use our current move (shouldnt ever happen)
+                        max_move = mve;
+                    }
                     break;
                 }
             },
@@ -225,6 +224,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
         );
 
         if params.alpha >= params.beta {
+            cutoff_move = Some(mve);
             // Alpha beta cutoff here
             break;
         }
@@ -255,19 +255,11 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
             evaluation: node_value,
             move_type: nove_move_type,
             flag: node_flag,
+            pv_move: Some(max_move),
+            cutoff_move: cutoff_move,
         },
     };
     params.cache.cache_tx.send(node_entry);
-    // // Overwrite the PV move in the hash
-    // let _ = params.cache.cache_tx.send(CacheEntry {
-    //     board_hash: board.make_move_new(max_move).get_hash(),
-    //     cachedata: CacheData {
-    // move_depth: params.depth,
-    // search_depth: params.depth_lim,
-    // evaluation: max_val,
-    // move_type: HashtableResultType::PVMove,
-    //     },
-    // });
 
     Ok(SearchOutput {
         node_eval: max_val,
