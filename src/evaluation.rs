@@ -99,7 +99,7 @@ fn chebyshev_dist(sq_1: Square, sq_2: Square) -> i16 {
     max(rank_diff.abs(), file_diff.abs())
 }
 
-fn edge_distance(sq: Square) -> i16{
+fn edge_distance(sq: Square) -> i16 {
     let rank = sq.get_rank().to_index();
     let file = sq.get_file().to_index();
 
@@ -108,7 +108,7 @@ fn edge_distance(sq: Square) -> i16{
     min(to_nearest_file, to_nearest_rank) as i16
 }
 
-fn endgame_king_heuristics(board: &Board, gamestate: GameState) -> Eval {
+fn endgame_king_heuristics(board: &Board, gamestate: GameState, up_material: bool) -> Eval {
     match gamestate {
         GameState::_Opening => Eval { score: 0 },
         GameState::Middle => Eval { score: 0 },
@@ -116,25 +116,36 @@ fn endgame_king_heuristics(board: &Board, gamestate: GameState) -> Eval {
             // Get squares of both kings
             let king_sq_w = board.king_square(Color::White);
             let king_sq_b = board.king_square(Color::Black);
+            let king_distance_bonus = if up_material {
+                // Compute the king distance heuristic
+                let dist = chebyshev_dist(king_sq_w, king_sq_b);
 
-            // Compute the king distance heuristic
-            let dist = chebyshev_dist(king_sq_w, king_sq_b);
-
-            let dist_weight = -5; // Want to be as close as possible to enemy king to cut it off
-            let score = dist * dist_weight;
-            let king_distance_bonus = abs_eval_from_color(score, board.side_to_move());
-
-            // Compute the king position heuristic
-            let opponent_king_sq = match board.side_to_move() {
-                Color::White => king_sq_b,
-                Color::Black => king_sq_w,
+                let dist_weight = 10; // Want to be as close as possible to enemy king to cut it off
+                let score = (5 - dist) * dist_weight;
+                abs_eval_from_color(score, board.side_to_move())
+            } else {
+                abs_eval_from_color(0, board.side_to_move())
             };
 
-            let position_weight = -5;
-            let enemy_king_position_bonus = abs_eval_from_color(position_weight*edge_distance(opponent_king_sq), board.side_to_move());
-            king_distance_bonus + enemy_king_position_bonus
+            // Compute the king position heuristic
+            let (opponent_king_sq, self_king_sq) = match board.side_to_move() {
+                Color::White => (king_sq_b, king_sq_w),
+                Color::Black => (king_sq_w, king_sq_b),
+            };
+
+            let position_weight = 5;
+            let king_position_diff =
+                position_weight * (edge_distance(self_king_sq) - edge_distance(opponent_king_sq));
+            let king_position_bonus = abs_eval_from_color(king_position_diff, board.side_to_move());
+            king_distance_bonus + king_position_bonus
         }
     }
+}
+
+fn up_substantial_material(material_eval: Eval, side_to_move: Color) -> bool {
+    // Returns a boolean depending whether or not we think we're up notable material
+    let score = material_eval.for_colour(side_to_move);
+    score >= 300 // Don't worry about pawns but a minor piece could do it
 }
 
 pub(crate) fn evaluate_board(board: Board) -> Eval {
@@ -155,10 +166,10 @@ pub(crate) fn evaluate_board(board: Board) -> Eval {
         BoardStatus::Ongoing => {
             let material_eval = evaluate_board_material(&board);
             let psqt_eval = evaluate_board_psqt(&board, current_gamestate);
-            let king_eg_eval = endgame_king_heuristics(&board, current_gamestate);
+            let up_material = up_substantial_material(material_eval, board.side_to_move());
+            let king_eg_eval = endgame_king_heuristics(&board, current_gamestate, up_material);
 
             material_eval + psqt_eval + king_eg_eval
-            // material_eval
         }
     }
 }
