@@ -75,9 +75,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                         // Look at these first even if the cache isn't technically valid
                         cache_pv_move = cache_result.pv_move;
                         cache_cutoff_move = cache_result.cutoff_move;
-
                     }
-
                 }
             }
         }
@@ -117,16 +115,11 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
             let mut _blank_move: ChessMove;
 
             return Ok(SearchOutput {
-                node_eval: quiescent_search(
-                    &board,
-                    params.alpha,
-                    params.beta,
-                    0,
-                ),
+                node_eval: quiescent_search(&board, params.alpha, params.beta, 0),
                 best_move: Default::default(),
                 node_stats,
             });
-            
+
             // return Ok(SearchOutput {
             //     node_eval: evaluate_board(
             //         board,
@@ -142,12 +135,8 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
     // Get length of moves
     let num_moves = child_moves.len();
 
-    let mut sorted_moves = ordering::order_moves(
-        child_moves,
-        board,
-        cache_pv_move,
-        cache_cutoff_move,
-    ); // sort all the moves
+    let mut sorted_moves =
+        ordering::order_moves(child_moves, board, cache_pv_move, cache_cutoff_move); // sort all the moves
 
     // Initialize with least desirable evaluation
     let mut max_val = match board.side_to_move() {
@@ -159,7 +148,6 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
     let mut cutoff_move = None;
 
     for mve in &mut sorted_moves {
-
         let node_evaluation;
         let _best_move: ChessMove;
 
@@ -318,6 +306,53 @@ mod tests {
             board,
             SearchParameters {
                 depth: 0,
+                depth_lim: 3,
+                extension: 0,
+                alpha: i16::MAX - 1,
+                beta: i16::MIN + 1,
+                color: board.side_to_move(),
+                cache,
+                t_start: &t_start,
+                t_lim: Duration::from_secs(7),
+                first_search_move: Some(mve),
+            },
+        )
+        .unwrap();
+        println!("{:#?}", search_res.best_move.to_string());
+        assert_ne!(
+            search_res.best_move,
+            ChessMove::new(Square::C3, Square::E4, None)
+        )
+    }
+
+    #[test]
+    fn test_performance_final_depth() {
+        let fen = "r1k2b1r/ppp1nNpp/2p5/4P3/5Bb1/2N5/PPP2P1P/R4RK1 b - - 0 1";
+        let board = Board::from_str(fen).expect("board should be valid");
+        let mve = ChessMove::new(Square::H8, Square::G8, None);
+
+        let _board_b = board.make_move_new(mve);
+
+        let _run_stats = Statistics {
+            all_nodes: 0,
+            searched_nodes: 0,
+            caches_used: 0,
+        };
+
+        let t_start = SystemTime::now(); // Initial time before running
+
+        let cache_arc = Arc::new(RwLock::new(Cache::default()));
+        let (cache_tx, _cache_rx) = Cache::generate_channel();
+
+        let cache = CacheInputGrouping {
+            cache_ref: cache_arc,
+            cache_tx,
+        };
+
+        let search_res = find_best_move(
+            board,
+            SearchParameters {
+                depth: 2,
                 depth_lim: 3,
                 extension: 0,
                 alpha: i16::MAX - 1,
