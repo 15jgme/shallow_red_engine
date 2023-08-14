@@ -26,22 +26,22 @@ This repo houses the core Shallow Red chess engine. Operation of this engine is 
   // Calling the enging can be done in only a few lines
 
   use chess::{Board, ChessMove};
-  use shallow_red_engine::{enter_engine, EngineReturn}
+  use shallow_red_engine::{enter_engine, EngineReturn, EngineSettings};
 
   // board with initial position
   let board = Board::default();
 
   // run the engine using board (in this case white will move)
-  let (engine_move: ChessMove, _) = enter_engine(board).await;
+  let (engine_move: ChessMove, _) = enter_engine(board, EngineSettings::default());
 
   // Print out the move we found
   println!("The best move for white suggested by the engine is: {}", engine_move.to_string());
 
   // If you want to see more details about the engine, a second return of type EngineReturn is provided
-  let (engine_move: ChessMove, engine_data: Option<EngineReturn>) = enter_engine(board).await;
+  let (engine_move: ChessMove, engine_data: Option<EngineReturn>) = enter_engine(board, EngineSettings::default()).await;
   println!("The engine returned the following data: \n {:#?}", engine_data.unwrap())
 
 ```
 
 ## Playing the engine
-The easiest way to test out the engine is to download the latest build for [Shallow Red](https://github.com/15jgme/shallow-red/releases). That is a project that provides a UI for this engine using Tauri (and can also be easily modified to run any engine with an input of a Board type and output of a ChessMove type)
+The easiest way to play the engine is to check it out on Lichess @[ShallowRedBot](https://lichess.org/@/ShallowRedBot). You can also try the [UCI wrapper](https://github.com/15jgme/uci-shallow-red), or play with the [tauri GUI for Shallow Red](https://github.com/15jgme/shallow-red/releases).
