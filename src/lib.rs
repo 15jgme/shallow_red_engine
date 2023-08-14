@@ -8,3 +8,4 @@ pub(crate) mod psqt;
 pub(crate) mod gamestate;
 pub mod utils;
 pub mod managers;
+pub(crate) mod extensions;

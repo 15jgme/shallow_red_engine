@@ -51,7 +51,6 @@ impl Default for Cache {
                     move_depth: 0,
                     search_depth: 0,
                     evaluation: Eval { score: 0 },
-                    move_type: HashtableResultType::RegularMove,
                     flag: BoundType::LowerBound,
                     pv_move: None,
                     cutoff_move: None,
@@ -63,20 +62,12 @@ impl Default for Cache {
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
 pub struct CacheData {
-    pub move_depth: i16,
-    pub search_depth: i16,
+    pub move_depth: u8,
+    pub search_depth: u8,
     pub evaluation: Eval,
-    pub move_type: HashtableResultType, // What type of move we have
     pub flag: BoundType,
     pub pv_move: Option<ChessMove>, // Best move (to be looked at first)
     pub cutoff_move: Option<ChessMove>, // Move that caused a alpha beta cutoff 
-}
-
-#[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
-pub enum HashtableResultType {
-    RegularMove,
-    PVMove,
-    CutoffMove,
 }
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Debug)]
@@ -105,7 +96,7 @@ pub struct CacheInputGrouping {
 mod tests {
     use super::CacheEntry;
     use crate::{
-        managers::cache_manager::{Cache, CacheData, HashtableResultType},
+        managers::cache_manager::{Cache, CacheData},
         utils::common::Eval,
     };
     use std::thread;
@@ -118,6 +109,7 @@ mod tests {
     use parking_lot::RwLock;
 
     #[test]
+    #[serial_test::serial]
     fn test_cache_server() {
         // Declare cache table for transpositions
         let cache_arc = Arc::new(RwLock::new(Cache::default()));
@@ -132,7 +124,6 @@ mod tests {
             move_depth: 1,
             search_depth: 2,
             evaluation: Eval { score: 3 },
-            move_type: HashtableResultType::PVMove,
             flag: crate::managers::cache_manager::BoundType::LowerBound,
             pv_move: None,
             cutoff_move: None,

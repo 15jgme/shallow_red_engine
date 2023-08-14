@@ -8,7 +8,7 @@ fn evaluate_board_material(board: &Board) -> Eval {
     // List of values
     let v_pawn: i16 = 100;
     let v_knight: i16 = 300;
-    let v_bishop: i16 = 300;
+    let v_bishop: i16 = 320;
     let v_rook: i16 = 500;
     let v_queen: i16 = 900;
 
