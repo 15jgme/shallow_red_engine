@@ -12,13 +12,18 @@ pub(crate) fn quiescent_search(
     board: &Board,
     alpha: i16,
     beta: i16,
-    depth: i16,
+    depth: u8,
 ) -> Eval {
     let mut alpha = alpha;
     // Search through all terminal captures
     let stand_pat = evaluate_board(*board);
-    if stand_pat.for_colour(board.side_to_move()) >= beta || depth > QUIESENT_LIM {
+
+    if stand_pat.for_colour(board.side_to_move()) >= beta{
         return abs_eval_from_color(beta, board.side_to_move());
+    }
+
+    if depth > QUIESENT_LIM{
+        return stand_pat;
     }
 
     let sorted_moves = fetch_sorted_captures(board);
@@ -54,6 +59,7 @@ mod tests{
     use super::{fetch_sorted_captures, quiescent_search};
 
     #[test]
+    #[serial_test::serial]
     fn test_caputes_only(){
         let board_init: Board = Default::default();
         let mut sorted_cap = fetch_sorted_captures(&board_init);
@@ -66,6 +72,7 @@ mod tests{
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_quiescent_basic(){
         let board_eg: Board = Board::from_str("8/3K4/8/8/8/8/3R4/3k4 b - - 0 1").unwrap();
         let q_res = quiescent_search(&board_eg, i16::min_value() + 1, i16::max_value() - 1, 0);

@@ -1,6 +1,7 @@
 use crate::consts::{self, USE_CACHE};
 
-use crate::managers::cache_manager::{BoundType, CacheData, CacheEntry, HashtableResultType};
+use crate::extensions::should_extend;
+use crate::managers::cache_manager::{BoundType, CacheData, CacheEntry};
 use crate::managers::stats_manager::Statistics;
 // use crate::ordering::RetreivedCacheData;
 use crate::quiescent::quiescent_search;
@@ -10,7 +11,6 @@ use crate::{
     ordering,
     utils::common::{flip_colour, max},
 };
-use chess::EMPTY;
 use chess::{Board, BoardStatus, ChessMove, Color, MoveGen};
 
 pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<SearchOutput, ()> {
@@ -25,7 +25,8 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
     let mut max_move = ChessMove::default();
 
     // ===================== Check TT for this node ===================== //
-    // Check if this move is in our cache (with a flag to disable cache lookup)
+    let mut skip_tt_push = false; // Flag for whether or not we should avoid pushing to the TT
+                                  // Check if this move is in our cache (with a flag to disable cache lookup)
     match USE_CACHE && params.depth > 0 {
         true => {
             if let Some(cache_result) = params
@@ -36,8 +37,10 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                 if let Some(cache_result) = cache_result.cache_manager_get(board.get_hash()) {
                     // Check if we have a sufficient lookup distance
                     let cache_lookahead = cache_result.search_depth - cache_result.move_depth;
-                    let current_lookahead = params.depth_lim - params.depth;
+                    let current_lookahead = (params.depth_lim + params.extension) - params.depth;
                     let evaluation_valid = cache_lookahead >= current_lookahead;
+
+                    skip_tt_push = current_lookahead < cache_lookahead; // Don't replace in TT if our lookahead is worse
 
                     if evaluation_valid {
                         // If the cache is valid manage the cache
@@ -104,11 +107,8 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
         || (board.status() == BoardStatus::Checkmate)
         || (board.status() == BoardStatus::Stalemate)
     {
-        if *board.checkers() != EMPTY
-            && params.extension < consts::EXTENSION_LIM
-            && board.status() == BoardStatus::Ongoing
-        {
-            // There is a check, run an extension to ensure that
+        if should_extend(&board, params.extension) {
+            // We've determined that the search should be extended
             params.extension += 1;
         } else {
             // We're not in check so finish the search
@@ -216,7 +216,6 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
         }
     }
 
-    // Decide how we update load this move into the TT
     let node_value = max_val;
     let node_flag: BoundType;
     if node_value.for_colour(board.side_to_move()) <= alpha_orig {
@@ -227,19 +226,12 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
         node_flag = BoundType::Exact;
     }
 
-    let nove_move_type = if params.alpha >= params.beta {
-        HashtableResultType::CutoffMove
-    } else {
-        HashtableResultType::RegularMove
-    };
-
     let node_entry = CacheEntry {
         board_hash: board.get_hash(),
         cachedata: CacheData {
             move_depth: params.depth,
-            search_depth: params.depth_lim,
+            search_depth: params.depth_lim + params.extension,
             evaluation: node_value,
-            move_type: nove_move_type,
             flag: node_flag,
             pv_move: Some(max_move),
             cutoff_move: cutoff_move,
@@ -279,6 +271,7 @@ mod tests {
     use super::find_best_move;
 
     #[test]
+    #[serial_test::serial]
     fn test_for_first_move_issue() {
         let fen = "r1k2b1r/ppp1nNpp/2p5/4P3/5Bb1/2N5/PPP2P1P/R4RK1 b - - 0 1";
         let board = Board::from_str(fen).expect("board should be valid");
@@ -326,6 +319,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_performance_final_depth() {
         let fen = "r1k2b1r/ppp1nNpp/2p5/4P3/5Bb1/2N5/PPP2P1P/R4RK1 b - - 0 1";
         let board = Board::from_str(fen).expect("board should be valid");

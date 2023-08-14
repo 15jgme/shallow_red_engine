@@ -8,7 +8,7 @@ fn get_piece_weight(piece: Piece) -> i16 {
     match piece {
         Piece::Pawn => 100,
         Piece::Knight => 300,
-        Piece::Bishop => 300,
+        Piece::Bishop => 320,
         Piece::Rook => 500,
         Piece::Queen => 900,
         Piece::King => 2500,
@@ -40,6 +40,11 @@ pub(crate) fn order_moves(
             if *mve == coff {
                 return i16::MIN + 1;
             }
+        }
+
+        // If we have a promotion sort it very highly
+        if let Some(promotion) = mve.get_promotion() {
+            return i16::MIN + 2 + (get_piece_weight(Piece::Queen) - get_piece_weight(promotion));
         }
 
         // Check if move is a non-capture

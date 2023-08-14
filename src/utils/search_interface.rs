@@ -11,9 +11,9 @@ use crate::managers::stats_manager::Statistics;
 use super::common::Eval;
 
 pub struct SearchParameters<'a> {
-    pub depth: i16,
-    pub depth_lim: i16,
-    pub extension: i16,
+    pub depth: u8,
+    pub depth_lim: u8,
+    pub extension: u8,
     pub alpha: i16,
     pub beta: i16,
     pub color: Color,

@@ -59,7 +59,7 @@ pub fn enter_engine(
     let t_start = SystemTime::now(); // Initial time before running
     let mut abort_search: bool = false; // Flag invoked by the UCI layer to abort deepening
 
-    let mut terminal_depth: i16 = 1; // Starting depth
+    let mut terminal_depth: u8 = 1; // Starting depth
 
     let mut best_score: Eval = Eval { score: 0 };
     let mut best_mve: ChessMove = Default::default();

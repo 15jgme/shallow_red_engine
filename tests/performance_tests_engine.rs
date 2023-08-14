@@ -9,6 +9,7 @@ use shallow_red_engine::{
 };
 
 #[test]
+#[serial_test::serial]
 fn test_integrated_initial() {
     let board: Board = Board::default(); // Initial board
     let (eng_move, _) = enter_engine(board, EngineSettings::default());
@@ -16,6 +17,7 @@ fn test_integrated_initial() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_integrated_endgame() {
     let board: Board = Board::from_str("3r4/8/3k4/8/8/3K4/8/8 b - - 0 1").unwrap();
     let (eng_move, _) = enter_engine(board, EngineSettings::default());
@@ -23,6 +25,7 @@ fn test_integrated_endgame() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_external_cache() {
     // Declare cache table for transpositions
     let cache_arc = Arc::new(RwLock::new(Cache::default()));
