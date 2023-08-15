@@ -1,7 +1,7 @@
 use std::sync::mpsc::{self, Receiver, Sender};
 
-use std::sync::Arc;
 use parking_lot::RwLock;
+use std::sync::Arc;
 
 use chess::{CacheTable, ChessMove};
 
@@ -20,9 +20,15 @@ impl Cache {
             match cache_rx {
                 Ok(new_cache_entry) => {
                     // println!("Message received: {:#?}", new_cache_entry);
-                    binding.write().
-                    cache
-                        .add(new_cache_entry.board_hash, new_cache_entry.cachedata);
+                    binding.write().cache.replace_if(
+                        new_cache_entry.board_hash,
+                        new_cache_entry.cachedata,
+                        |old_entry| {
+                            (old_entry.search_depth - old_entry.move_depth)
+                                > (new_cache_entry.cachedata.search_depth
+                                    - new_cache_entry.cachedata.move_depth)
+                        },
+                    );
                 }
                 Err(_) => {
                     // println!("Exiting cache server");
@@ -67,7 +73,7 @@ pub struct CacheData {
     pub evaluation: Eval,
     pub flag: BoundType,
     pub pv_move: Option<ChessMove>, // Best move (to be looked at first)
-    pub cutoff_move: Option<ChessMove>, // Move that caused a alpha beta cutoff 
+    pub cutoff_move: Option<ChessMove>, // Move that caused a alpha beta cutoff
 }
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Debug)]
@@ -100,10 +106,7 @@ mod tests {
         utils::common::Eval,
     };
     use std::thread;
-    use std::{
-        sync::{Arc},
-        time::Duration,
-    };
+    use std::{sync::Arc, time::Duration};
 
     use chess::Board;
     use parking_lot::RwLock;
