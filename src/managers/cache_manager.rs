@@ -24,11 +24,12 @@ impl Cache {
                         new_cache_entry.board_hash,
                         new_cache_entry.cachedata,
                         |old_entry| {
+                            (old_entry.search_depth == 0) ||
                             (old_entry.search_depth - old_entry.move_depth)
                                 > (new_cache_entry.cachedata.search_depth
                                     - new_cache_entry.cachedata.move_depth)
                         },
-                    );
+                    )
                 }
                 Err(_) => {
                     // println!("Exiting cache server");
@@ -140,7 +141,7 @@ mod tests {
 
         cache_tx.send(cache_entry_to_send).unwrap();
 
-        thread::sleep(Duration::from_nanos(100));
+        thread::sleep(Duration::from_micros(100));
 
         let cache_retrieve = cache_arc
             .read()
