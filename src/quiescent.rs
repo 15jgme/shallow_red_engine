@@ -13,10 +13,11 @@ pub(crate) fn quiescent_search(
     alpha: i16,
     beta: i16,
     depth: u8,
+    alternate_eval_fn: Option<fn(usize)->i16>,
 ) -> Eval {
     let mut alpha = alpha;
     // Search through all terminal captures
-    let stand_pat = evaluate_board(*board);
+    let stand_pat = evaluate_board(*board, alternate_eval_fn);
 
     if stand_pat.for_colour(board.side_to_move()) >= beta{
         return abs_eval_from_color(beta, board.side_to_move());
@@ -38,6 +39,7 @@ pub(crate) fn quiescent_search(
             -beta,
             -alpha,
             depth + 1,
+            alternate_eval_fn
         );
 
         if score.for_colour(board.side_to_move()) >= beta {
@@ -75,7 +77,7 @@ mod tests{
     #[serial_test::serial]
     fn test_quiescent_basic(){
         let board_eg: Board = Board::from_str("8/3K4/8/8/8/8/3R4/3k4 b - - 0 1").unwrap();
-        let q_res = quiescent_search(&board_eg, i16::min_value() + 1, i16::max_value() - 1, 0);
+        let q_res = quiescent_search(&board_eg, i16::min_value() + 1, i16::max_value() - 1, 0, None);
         println!("{:#?}", q_res);
     }
 }

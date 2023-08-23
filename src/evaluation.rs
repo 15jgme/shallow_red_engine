@@ -148,7 +148,15 @@ fn up_substantial_material(material_eval: Eval, side_to_move: Color) -> bool {
     score >= 300 // Don't worry about pawns but a minor piece could do it
 }
 
-pub(crate) fn evaluate_board(board: Board) -> Eval {
+pub(crate) fn evaluate_board(board: Board, alternate_fn: Option<fn(usize)->i16>) -> Eval {
+    // If we get an alternate fn to run, use that instead
+    if let Some(alt_eval) = alternate_fn {
+        // bitboard = board.
+        let eval_score = alt_eval(0);
+        return Eval{score: eval_score};
+
+    }
+
     // Returns the current score on the board where white winning is positive and black winning is negative
 
     let current_gamestate: GameState = gamestate::gamestate(&board); // Get the current gamestate
@@ -198,7 +206,7 @@ mod tests {
     #[test]
     fn test_default_board() {
         let initial_board = Board::default();
-        assert_eq!(evaluate_board(initial_board), Eval { score: 0 })
+        assert_eq!(evaluate_board(initial_board, None), Eval { score: 0 })
     }
 
     #[test]
@@ -214,5 +222,11 @@ mod tests {
         assert_eq!(edge_distance(Square::D5), 3);
         assert_eq!(edge_distance(Square::E1), 0);
         assert_eq!(edge_distance(Square::E3), 2);
+    }
+
+    #[test]
+    fn test_alt_eval_fn(){
+        let initial_board = Board::default();
+        assert_eq!(evaluate_board(initial_board, Some(|x| 1234) ), Eval { score: 1234 })
     }
 }

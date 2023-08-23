@@ -115,7 +115,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
             let mut _blank_move: ChessMove;
 
             return Ok(SearchOutput {
-                node_eval: quiescent_search(&board, params.alpha, params.beta, 0),
+                node_eval: quiescent_search(&board, params.alpha, params.beta, 0, params.alternate_eval_fn),
                 best_move: Default::default(),
                 node_stats,
             });
@@ -166,6 +166,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                 t_start: params.t_start,
                 t_lim: params.t_lim,
                 first_search_move: None,
+                alternate_eval_fn: params.alternate_eval_fn,
             },
         );
 
@@ -308,6 +309,7 @@ mod tests {
                 t_start: &t_start,
                 t_lim: Duration::from_secs(7),
                 first_search_move: Some(mve),
+                alternate_eval_fn: None,
             },
         )
         .unwrap();
@@ -356,6 +358,7 @@ mod tests {
                 t_start: &t_start,
                 t_lim: Duration::from_secs(7),
                 first_search_move: Some(mve),
+                alternate_eval_fn: None,
             },
         )
         .unwrap();

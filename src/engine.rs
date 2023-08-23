@@ -21,7 +21,7 @@ pub fn enter_engine(
 ) -> (ChessMove, Option<EngineReturn>) {
     if settings.verbose {
         println!("=============================================");
-        println!("Balance of board {}", evaluate_board(board).score);
+        println!("Balance of board {}", evaluate_board(board, None).score);
     }
 
     let start_time = SystemTime::now();
@@ -97,6 +97,7 @@ pub fn enter_engine(
                 } else {
                     None
                 },
+                alternate_eval_fn: settings.alternate_eval_func,
             },
         );
 
