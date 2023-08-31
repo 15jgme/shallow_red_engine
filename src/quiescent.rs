@@ -13,7 +13,7 @@ pub(crate) fn quiescent_search(
     alpha: i16,
     beta: i16,
     depth: u8,
-    alternate_eval_fn: Option<fn(usize)->i16>,
+    alternate_eval_fn: Option<fn(usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize)->i16>,
 ) -> Eval {
     let mut alpha = alpha;
     // Search through all terminal captures

@@ -53,7 +53,7 @@ impl Default for Cache {
     fn default() -> Self {
         Self {
             cache: CacheTable::new(
-                67108864,
+                65536, //67108864,
                 CacheData {
                     move_depth: 0,
                     search_depth: 0,

@@ -148,11 +148,12 @@ fn up_substantial_material(material_eval: Eval, side_to_move: Color) -> bool {
     score >= 300 // Don't worry about pawns but a minor piece could do it
 }
 
-pub(crate) fn evaluate_board(board: Board, alternate_fn: Option<fn(usize)->i16>) -> Eval {
+pub fn evaluate_board(board: Board, alternate_fn: Option<fn(usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize)->i16>) -> Eval {
+    
     // If we get an alternate fn to run, use that instead
     if let Some(alt_eval) = alternate_fn {
         // bitboard = board.
-        let eval_score = alt_eval(0);
+        let eval_score = alt_eval(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         return Eval{score: eval_score};
 
     }
@@ -227,6 +228,6 @@ mod tests {
     #[test]
     fn test_alt_eval_fn(){
         let initial_board = Board::default();
-        assert_eq!(evaluate_board(initial_board, Some(|x| 1234) ), Eval { score: 1234 })
+        assert_eq!(evaluate_board(initial_board, Some(|a, b, c, d, e, f, g, h, i, j, k, l| 1234) ), Eval { score: 1234 })
     }
 }

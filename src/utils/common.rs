@@ -31,7 +31,7 @@ pub struct Eval {
 }
 
 impl Eval {
-    pub(crate) fn for_colour(&self, colour: Color) -> i16 {
+    pub fn for_colour(&self, colour: Color) -> i16 {
         // Returns the score for a colour where positive is more desriable for that colour
         match colour {
             Color::White => self.score,

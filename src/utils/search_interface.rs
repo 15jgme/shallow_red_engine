@@ -21,7 +21,7 @@ pub struct SearchParameters<'a> {
     pub t_start: &'a SystemTime,
     pub t_lim: Duration,
     pub first_search_move: Option<ChessMove>,
-    pub alternate_eval_fn: Option<fn(usize) -> i16>
+    pub alternate_eval_fn: Option<fn(usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize) -> i16>
 }
 
 pub struct SearchOutput {

@@ -9,7 +9,7 @@ pub struct EngineSettings {
     pub time_limit: Duration, // Search will try to return ASAP after this limit
     pub stop_engine_rcv: Option<Receiver<bool>>, // Stop asap if this channel writes true
     pub verbose: bool,        // Engine will print extra data to stdout
-    pub alternate_eval_func: Option<fn(usize) -> i16>
+    pub alternate_eval_func: Option<fn(usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize) -> i16>
 }
 
 impl Debug for EngineSettings {
