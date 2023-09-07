@@ -1,7 +1,7 @@
 use chess::{Board, ChessMove, Color};
 
-use std::sync::{Arc};
 use parking_lot::RwLock;
+use std::sync::Arc;
 use std::thread;
 use std::time::SystemTime;
 
@@ -12,16 +12,33 @@ use crate::managers::stats_manager::{Statistics, StatisticsDepth};
 use crate::search::find_best_move;
 use crate::utils::common::EngineReturn;
 use crate::utils::common::Eval;
+use crate::utils::common::EvalFunc;
 use crate::utils::engine_interface::EngineSettings;
 use crate::utils::search_interface::SearchParameters;
 
-pub fn enter_engine(
+pub fn enter_engine<EvalFunc>(
     board: Board,
-    settings: EngineSettings,
-) -> (ChessMove, Option<EngineReturn>) {
+    settings: EngineSettings<EvalFunc>,
+) -> (ChessMove, Option<EngineReturn>)
+where
+    EvalFunc: Fn(
+        usize,
+        usize,
+        usize,
+        usize,
+        usize,
+        usize,
+        usize,
+        usize,
+        usize,
+        usize,
+        usize,
+        usize,
+    ) -> i16 + Clone,
+{
     if settings.verbose {
         println!("=============================================");
-        println!("Balance of board {}", evaluate_board(board, None).score);
+        println!("Balance of board {}", evaluate_board::<EvalFunc>(board, None).score);
     }
 
     let start_time = SystemTime::now();
@@ -97,7 +114,7 @@ pub fn enter_engine(
                 } else {
                     None
                 },
-                alternate_eval_fn: settings.alternate_eval_func,
+                alternate_eval_fn: settings.alternate_eval_func.clone(),
             },
         );
 
@@ -172,7 +189,8 @@ mod tests {
     #[test]
     fn test_integrated_engine() {
         let board: Board = Board::default(); // Initial board
-        let (eng_move, _) = enter_engine(board, EngineSettings::default());
+        let settings: EngineSettings<EvalFunc> = EngineSettings::default();
+        let (eng_move, _) = enter_engine(board, settings);
         assert!(board.legal(eng_move)); // Make sure the engine move is legal
     }
 
@@ -180,7 +198,7 @@ mod tests {
     fn test_stop_channel() {
         let board: Board = Board::default(); // Initial board
         let (_tx, _rx): (Sender<bool>, Receiver<bool>) = mpsc::channel(); // Stop channel
-        let (eng_move, _) = enter_engine(board, EngineSettings::default());
+        let (eng_move, _) = enter_engine::<EvalFunc>(board, EngineSettings::default());
         assert!(board.legal(eng_move)); // Make sure the engine move is legal
     }
 
@@ -188,7 +206,7 @@ mod tests {
     fn test_board_post_engine() {
         let board: Board = Board::default(); // Initial board
         let board_orig = board; // Deep copy of board
-        let _eng_move = enter_engine(board, EngineSettings::default());
+        let _eng_move = enter_engine::<EvalFunc>(board, EngineSettings::default());
         assert_eq!(board, board_orig); // Make sure the engine move is legal
     }
 
@@ -199,7 +217,7 @@ mod tests {
 
         let board: Board =
             Board::from_str("r4rk1/pq3ppp/2p5/2PpP3/2pP4/P1P3R1/4QPPP/R5K1 b - - 0 1").unwrap();
-        let (eng_move, _) = enter_engine(board, EngineSettings::default());
+        let (eng_move, _) = enter_engine::<EvalFunc>(board, EngineSettings::default());
 
         assert_ne!(eng_move, ChessMove::new(Square::E2, Square::B2, None))
     }

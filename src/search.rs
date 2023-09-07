@@ -13,7 +13,21 @@ use crate::{
 };
 use chess::{Board, BoardStatus, ChessMove, Color, MoveGen};
 
-pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<SearchOutput, ()> {
+pub fn find_best_move<EvalFunc>(board: Board, mut params: SearchParameters<EvalFunc>) -> Result<SearchOutput, ()> where
+EvalFunc: Fn(
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+) -> i16 + Clone,{
     let alpha_orig = params.alpha;
 
     let mut cache_pv_move: Option<ChessMove> = None;
@@ -25,7 +39,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
     let mut max_move = ChessMove::default();
 
     // ===================== Check TT for this node ===================== //
-    let mut skip_tt_push = false; // Flag for whether or not we should avoid pushing to the TT
+    let mut _skip_tt_push = false; // Flag for whether or not we should avoid pushing to the TT
                                   // Check if this move is in our cache (with a flag to disable cache lookup)
     match USE_CACHE && params.depth > 0 {
         true => {
@@ -40,7 +54,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                     let current_lookahead = (params.depth_lim + params.extension) - params.depth;
                     let evaluation_valid = cache_lookahead >= current_lookahead;
 
-                    skip_tt_push = current_lookahead < cache_lookahead; // Don't replace in TT if our lookahead is worse
+                    _skip_tt_push = current_lookahead < cache_lookahead; // Don't replace in TT if our lookahead is worse
 
                     if evaluation_valid {
                         // If the cache is valid manage the cache
@@ -166,7 +180,7 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                 t_start: params.t_start,
                 t_lim: params.t_lim,
                 first_search_move: None,
-                alternate_eval_fn: params.alternate_eval_fn,
+                alternate_eval_fn: params.alternate_eval_fn.clone(),
             },
         );
 
@@ -266,7 +280,7 @@ mod tests {
             cache_manager::{Cache, CacheInputGrouping},
             stats_manager::Statistics,
         },
-        utils::search_interface::SearchParameters,
+        utils::{search_interface::SearchParameters, common::EvalFunc},
     };
 
     use super::find_best_move;
@@ -298,7 +312,7 @@ mod tests {
 
         let search_res = find_best_move(
             board,
-            SearchParameters {
+            SearchParameters::<EvalFunc> {
                 depth: 0,
                 depth_lim: 3,
                 extension: 0,
@@ -347,7 +361,7 @@ mod tests {
 
         let search_res = find_best_move(
             board,
-            SearchParameters {
+            SearchParameters::<EvalFunc> {
                 depth: 2,
                 depth_lim: 3,
                 extension: 0,

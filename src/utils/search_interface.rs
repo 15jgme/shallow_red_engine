@@ -10,7 +10,8 @@ use crate::managers::stats_manager::Statistics;
 
 use super::common::Eval;
 
-pub struct SearchParameters<'a> {
+pub struct SearchParameters<'a, EvalFunc>
+where EvalFunc : Fn(usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize) -> i16 {
     pub depth: u8,
     pub depth_lim: u8,
     pub extension: u8,
@@ -21,7 +22,7 @@ pub struct SearchParameters<'a> {
     pub t_start: &'a SystemTime,
     pub t_lim: Duration,
     pub first_search_move: Option<ChessMove>,
-    pub alternate_eval_fn: Option<fn(usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize) -> i16>
+    pub alternate_eval_fn: Option<EvalFunc>
 }
 
 pub struct SearchOutput {

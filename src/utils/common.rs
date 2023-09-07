@@ -73,3 +73,5 @@ pub(crate) fn flip_colour(color: Color) -> Color {
         Color::Black => Color::White,
     }
 }
+
+pub type EvalFunc = fn(usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize) -> i16;

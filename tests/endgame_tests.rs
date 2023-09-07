@@ -3,7 +3,7 @@ macro_rules! check_solve {
     ( $x:expr, $y:expr) => {
         {
             let board = Board::from_str($x).unwrap();
-            let settings = EngineSettings {time_limit: Duration::from_secs(10), ..Default::default()};
+            let settings = EngineSettings::<EvalFunc> {time_limit: Duration::from_secs(10), ..Default::default()};
             let (eng_move, _) = enter_engine(board, settings);
             assert_eq!(eng_move.to_string(), $y);
         }
@@ -19,7 +19,7 @@ mod tests{
     use std::{str::FromStr, time::Duration};
 
     use chess::Board;
-    use shallow_red_engine::{engine::enter_engine, utils::engine_interface::EngineSettings};
+    use shallow_red_engine::{engine::enter_engine, utils::engine_interface::EngineSettings, utils::common::EvalFunc};
 
     #[test]
     #[serial_test::serial]

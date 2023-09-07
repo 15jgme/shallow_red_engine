@@ -1,6 +1,6 @@
 use crate::gamestate;
 use crate::psqt::get_psqt_score;
-use crate::utils::common::{abs_eval_from_color, max, min};
+use crate::utils::common::{abs_eval_from_color, max, min, EvalFunc};
 use crate::{gamestate::GameState, utils::common::Eval};
 use chess::{Board, BoardStatus, Color, Piece, Square};
 
@@ -148,14 +148,29 @@ fn up_substantial_material(material_eval: Eval, side_to_move: Color) -> bool {
     score >= 300 // Don't worry about pawns but a minor piece could do it
 }
 
-pub fn evaluate_board(board: Board, alternate_fn: Option<fn(usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize)->i16>) -> Eval {
-    
+pub fn evaluate_board<EvalFunc>(board: Board, alternate_fn: Option<EvalFunc>) -> Eval
+where
+    EvalFunc: Fn(
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+        ) -> i16
+        + Clone,
+{
     // If we get an alternate fn to run, use that instead
     if let Some(alt_eval) = alternate_fn {
         // bitboard = board.
         let eval_score = alt_eval(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-        return Eval{score: eval_score};
-
+        return Eval { score: eval_score };
     }
 
     // Returns the current score on the board where white winning is positive and black winning is negative
@@ -207,7 +222,7 @@ mod tests {
     #[test]
     fn test_default_board() {
         let initial_board = Board::default();
-        assert_eq!(evaluate_board(initial_board, None), Eval { score: 0 })
+        assert_eq!(evaluate_board::<EvalFunc>(initial_board, None), Eval { score: 0 })
     }
 
     #[test]
@@ -226,8 +241,14 @@ mod tests {
     }
 
     #[test]
-    fn test_alt_eval_fn(){
+    fn test_alt_eval_fn() {
         let initial_board = Board::default();
-        assert_eq!(evaluate_board(initial_board, Some(|a, b, c, d, e, f, g, h, i, j, k, l| 1234) ), Eval { score: 1234 })
+        assert_eq!(
+            evaluate_board(
+                initial_board,
+                Some(|_a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l| 1234)
+            ),
+            Eval { score: 1234 }
+        )
     }
 }

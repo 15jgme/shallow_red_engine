@@ -1,4 +1,4 @@
-use chess::{BitBoard, Board, BoardStatus, Piece, EMPTY};
+use chess::{Board, BoardStatus, EMPTY};
 
 use crate::consts;
 

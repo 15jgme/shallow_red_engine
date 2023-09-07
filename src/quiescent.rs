@@ -8,16 +8,16 @@ fn fetch_sorted_captures(board: &Board) -> std::vec::IntoIter<chess::ChessMove>{
     ordering::order_moves(capture_moves, *board, None, None) // sort all the moves
 }
 
-pub(crate) fn quiescent_search(
+pub(crate) fn quiescent_search<EvalFunc>(
     board: &Board,
     alpha: i16,
     beta: i16,
     depth: u8,
-    alternate_eval_fn: Option<fn(usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize)->i16>,
-) -> Eval {
+    alternate_eval_fn: Option<EvalFunc>,
+) -> Eval where EvalFunc: Fn(usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize, usize) -> i16 + Clone {
     let mut alpha = alpha;
     // Search through all terminal captures
-    let stand_pat = evaluate_board(*board, alternate_eval_fn);
+    let stand_pat = evaluate_board(*board, alternate_eval_fn.clone());
 
     if stand_pat.for_colour(board.side_to_move()) >= beta{
         return abs_eval_from_color(beta, board.side_to_move());
@@ -39,7 +39,7 @@ pub(crate) fn quiescent_search(
             -beta,
             -alpha,
             depth + 1,
-            alternate_eval_fn
+            alternate_eval_fn.clone()
         );
 
         if score.for_colour(board.side_to_move()) >= beta {
@@ -57,6 +57,8 @@ mod tests{
     use std::str::FromStr;
 
     use chess::{Board, ChessMove, Square};
+
+    use crate::utils::common::EvalFunc;
 
     use super::{fetch_sorted_captures, quiescent_search};
 
@@ -77,7 +79,7 @@ mod tests{
     #[serial_test::serial]
     fn test_quiescent_basic(){
         let board_eg: Board = Board::from_str("8/3K4/8/8/8/8/3R4/3k4 b - - 0 1").unwrap();
-        let q_res = quiescent_search(&board_eg, i16::min_value() + 1, i16::max_value() - 1, 0, None);
+        let q_res = quiescent_search::<EvalFunc>(&board_eg, i16::min_value() + 1, i16::max_value() - 1, 0, None);
         println!("{:#?}", q_res);
     }
 }
