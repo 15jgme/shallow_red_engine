@@ -148,7 +148,7 @@ fn up_substantial_material(material_eval: Eval, side_to_move: Color) -> bool {
     score >= 300 // Don't worry about pawns but a minor piece could do it
 }
 
-pub(crate) fn evaluate_board(board: Board) -> Eval {
+pub fn evaluate_board(board: Board) -> Eval {
     // Returns the current score on the board where white winning is positive and black winning is negative
 
     let current_gamestate: GameState = gamestate::gamestate(&board); // Get the current gamestate
