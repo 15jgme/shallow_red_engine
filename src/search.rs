@@ -26,15 +26,18 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
 
     // ===================== Check TT for this node ===================== //
     let mut skip_tt_push = false; // Flag for whether or not we should avoid pushing to the TT
+    if USE_CACHE && params.depth > 0 {
                                   // Check if this move is in our cache (with a flag to disable cache lookup)
-    match USE_CACHE && params.depth > 0 {
-        true => {
             if let Some(cache_result) = params
                 .cache
                 .cache_ref
                 .try_read_for(crate::consts::TT_MAXTIME_LOOKUP)
             {
                 if let Some(cache_result) = cache_result.cache_manager_get(board.get_hash()) {
+                // Populate the PV and cutoff moves for ordering, even if the cache depth isn't too great
+                cache_pv_move = cache_result.pv_move;
+                cache_cutoff_move = cache_result.cutoff_move;
+
                     // Check if we have a sufficient lookup distance
                     let cache_lookahead = cache_result.search_depth - cache_result.move_depth;
                     let current_lookahead = (params.depth_lim + params.extension) - params.depth;
@@ -73,16 +76,10 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
                                 best_move: Default::default(),
                                 node_stats,
                             });
-                        }
-                        // Populate the PV and cutoff moves
-                        // Look at these first even if the cache isn't technically valid
-                        cache_pv_move = cache_result.pv_move;
-                        cache_cutoff_move = cache_result.cutoff_move;
                     }
                 }
             }
         }
-        false => {}
     };
     // ===================== Done TT for this node  ===================== //
 
