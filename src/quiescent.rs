@@ -43,8 +43,8 @@ pub(crate) fn quiescent_search(
         if score.for_colour(board.side_to_move()) >= beta {
             return abs_eval_from_color(beta, board.side_to_move());
         }
-        if stand_pat.for_colour(board.side_to_move()) > alpha {
-            alpha = stand_pat.for_colour(board.side_to_move());
+        if score.for_colour(board.side_to_move()) > alpha {
+            alpha = score.for_colour(board.side_to_move());
         }
     }
     abs_eval_from_color(alpha, board.side_to_move())
