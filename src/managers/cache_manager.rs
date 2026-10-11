@@ -26,7 +26,7 @@ impl Cache {
                         |old_entry| {
                             (old_entry.search_depth == 0) ||
                             (old_entry.search_depth - old_entry.move_depth)
-                                > (new_cache_entry.cachedata.search_depth
+                                < (new_cache_entry.cachedata.search_depth
                                     - new_cache_entry.cachedata.move_depth)
                         },
                     )
