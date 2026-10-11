@@ -27,55 +27,55 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
     // ===================== Check TT for this node ===================== //
     let mut skip_tt_push = false; // Flag for whether or not we should avoid pushing to the TT
     if USE_CACHE && params.depth > 0 {
-                                  // Check if this move is in our cache (with a flag to disable cache lookup)
-            if let Some(cache_result) = params
-                .cache
-                .cache_ref
-                .try_read_for(crate::consts::TT_MAXTIME_LOOKUP)
-            {
-                if let Some(cache_result) = cache_result.cache_manager_get(board.get_hash()) {
+        // Check if this move is in our cache (with a flag to disable cache lookup)
+        if let Some(cache_result) = params
+            .cache
+            .cache_ref
+            .try_read_for(crate::consts::TT_MAXTIME_LOOKUP)
+        {
+            if let Some(cache_result) = cache_result.cache_manager_get(board.get_hash()) {
                 // Populate the PV and cutoff moves for ordering, even if the cache depth isn't too great
                 cache_pv_move = cache_result.pv_move;
                 cache_cutoff_move = cache_result.cutoff_move;
 
-                    // Check if we have a sufficient lookup distance
-                    let cache_lookahead = cache_result.search_depth - cache_result.move_depth;
-                    let current_lookahead = (params.depth_lim + params.extension) - params.depth;
-                    let evaluation_valid = cache_lookahead >= current_lookahead;
+                // Check if we have a sufficient lookup distance
+                let cache_lookahead = cache_result.search_depth - cache_result.move_depth;
+                let current_lookahead = (params.depth_lim + params.extension) - params.depth;
+                let evaluation_valid = cache_lookahead >= current_lookahead;
 
-                    skip_tt_push = current_lookahead < cache_lookahead; // Don't replace in TT if our lookahead is worse
+                skip_tt_push = current_lookahead < cache_lookahead; // Don't replace in TT if our lookahead is worse
 
-                    if evaluation_valid {
-                        // If the cache is valid manage the cache
-                        node_stats.caches_used += 1;
-                        match cache_result.flag {
-                            BoundType::Exact => {
-                                return Ok(SearchOutput {
-                                    node_eval: cache_result.evaluation,
-                                    best_move: Default::default(),
-                                    node_stats,
-                                });
-                                // return value directly
-                            }
-                            BoundType::UpperBound => {
-                                params.alpha = max(
-                                    params.alpha,
-                                    cache_result.evaluation.for_colour(board.side_to_move()),
-                                )
-                            }
-                            BoundType::LowerBound => {
-                                params.beta = min(
-                                    params.beta,
-                                    cache_result.evaluation.for_colour(board.side_to_move()),
-                                )
-                            }
-                        };
-                        if params.alpha >= params.beta {
+                if evaluation_valid {
+                    // If the cache is valid manage the cache
+                    node_stats.caches_used += 1;
+                    match cache_result.flag {
+                        BoundType::Exact => {
                             return Ok(SearchOutput {
                                 node_eval: cache_result.evaluation,
                                 best_move: Default::default(),
                                 node_stats,
                             });
+                            // return value directly
+                        }
+                        BoundType::LowerBound => {
+                            params.alpha = max(
+                                params.alpha,
+                                cache_result.evaluation.for_colour(board.side_to_move()),
+                            )
+                        }
+                        BoundType::UpperBound => {
+                            params.beta = min(
+                                params.beta,
+                                cache_result.evaluation.for_colour(board.side_to_move()),
+                            )
+                        }
+                    };
+                    if params.alpha >= params.beta {
+                        return Ok(SearchOutput {
+                            node_eval: cache_result.evaluation,
+                            best_move: Default::default(),
+                            node_stats,
+                        });
                     }
                 }
             }
@@ -214,14 +214,13 @@ pub fn find_best_move(board: Board, mut params: SearchParameters) -> Result<Sear
     }
 
     let node_value = max_val;
-    let node_flag: BoundType;
-    if node_value.for_colour(board.side_to_move()) <= alpha_orig {
-        node_flag = BoundType::UpperBound;
+    let node_flag = if node_value.for_colour(board.side_to_move()) <= alpha_orig {
+        BoundType::UpperBound
     } else if node_value.for_colour(board.side_to_move()) >= params.beta {
-        node_flag = BoundType::LowerBound;
+        BoundType::LowerBound
     } else {
-        node_flag = BoundType::Exact;
-    }
+        BoundType::Exact
+    };
 
     let node_entry = CacheEntry {
         board_hash: board.get_hash(),
